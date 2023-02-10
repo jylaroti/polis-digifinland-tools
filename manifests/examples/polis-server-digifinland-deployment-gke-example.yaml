@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: polis-server
+data:
+  # For admin functionality, fill this out
+  ADMIN_EMAILS: "[]"
+  ADMIN_EMAIL_DATA_EXPORT: ""
+  ADMIN_EMAIL_DATA_EXPORT_TEST: ""
+  ADMIN_EMAIL_EMAIL_TEST: ""
+  ADMIN_UIDS: "[]"
+
+  DATABASE_FOR_READS_NAME: DATABASE_URL
+  # DATABASE_URL is Passed as a Secret
+  # DATABASE_URL:
+
+  # TODO - remove later if not needed:
+  WEBSERVER_USERNAME: ws-user
+  WEBSERVER_PASS: ws-pass
+
+  # Set to `false` for production
+  DEV_MODE: "false"
+
+  # Set the domain name; make sure this matches what"s running on math node
+  DOMAIN_OVERRIDE: polis-test-gke.digifinland.dev
+
+  # Options: prod, preprod, dev
+  MATH_ENV: dev
+  PORT: "5000"
+
+  # Set to `true` and insert google creds if desired
+  SHOULD_USE_TRANSLATION_API: "true"
+
+  # These need to be configured to point to the local file server
+  STATIC_FILES_HOST: polis-file-server
+  STATIC_FILES_ADMINDASH_PORT: "80"
+  STATIC_FILES_PORT: "80"
+
+  AWS_REGION: us-east-1
+
+  # Options: maildev, aws-ses, mailgun
+  EMAIL_TRANSPORT_TYPES: mailgun
+  # api key set as kubernetes secret:
+  # MAILGUN_API_KEY: 
+  MAILGUN_DOMAIN: polis-test.digifinland.dev
+  MAILGUN_ENDPOINT: api.eu.mailgun.net
+  POLIS_FROM_ADDRESS: "Polis <polis@polis-test.digifinland.dev>"
+
+  # These pieces of functionality will likely be removed in the near future
+  STRIPE_SECRET_KEY: sk_test_NFBDEThkpHCYBzXPJuBlY8TW
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polis-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: polis-server
+  template:
+    metadata:
+      labels:
+        app: polis-server
+    spec:
+      containers:
+        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-server:test
+          imagePullPolicy: Always
+          name: polis-server
+          envFrom:
+          - secretRef:
+              name: polis-server-secret
+          - configMapRef:
+              name: polis-server
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              # /home gets proxied to polis-file-server - use api paths for checking polis-server health
+              # path: /home
+              path: /api/v3/testConnection 
+              port: 5000            
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 1000m
+              memory: 1000Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polis-server-service
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "polis-server-cloudarmor"}'
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+  selector:
+    app: polis-server
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: polis-test-managed-cert
+spec:
+  domains:
+    - polis-test-gke.digifinland.dev
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: lb-http-to-https
+spec:
+  redirectToHttps:
+    enabled: true
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: polis-server-cloudarmor
+spec:
+  securityPolicy:
+    name: polis-kokeilu-test-ca-policies
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: polis-server-ingress
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: polis-kokeilu-test-lb-global-static-ip
+    networking.gke.io/managed-certificates: polis-test-managed-cert
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/v1beta1.FrontendConfig: lb-http-to-https
+spec:
+  defaultBackend:
+    service:
+      name: polis-server-service
+      port:
+        number: 5000
+  rules:
+  - host: polis-test-gke.digifinland.dev
+    http:
+      paths:
+      - pathType: ImplementationSpecific
+        path: /*
+        backend:
+          service:
+            name: polis-server-service
+            port:
+              number: 5000
+
+

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polis-file-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: polis-file-server
+  template:
+    metadata:
+      labels:
+        app: polis-file-server
+    spec:
+      containers:
+        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-file-server:dev
+          name: polis-file-server
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 1000m
+              memory: 1000Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polis-file-server
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  selector:
+    app: polis-file-server

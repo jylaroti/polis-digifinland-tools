@@ -1,0 +1,3 @@
+secrets/*
+gke-test-from-registry/*
+gke-prod/*

@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: polis-server
+data:
+  # For admin functionality, fill this out
+  ADMIN_EMAILS: "[]"
+  ADMIN_EMAIL_DATA_EXPORT: ""
+  ADMIN_EMAIL_DATA_EXPORT_TEST: ""
+  ADMIN_EMAIL_EMAIL_TEST: ""
+  ADMIN_UIDS: "[]"
+
+  DATABASE_FOR_READS_NAME: DATABASE_URL
+  # DATABASE_URL is passed as Secret
+  # DATABASE_URL: 
+
+  # TODO - these aren't used, remove:
+  WEBSERVER_USERNAME: ws-user
+  WEBSERVER_PASS: ws-pass
+
+  # Set to `false` for production
+  DEV_MODE: "false"
+
+  # Set the domain name; make sure this matches what"s running on math node
+  DOMAIN_OVERRIDE: polis.local
+
+  # Options: prod, preprod, dev
+  MATH_ENV: dev
+  PORT: "5000"
+
+  # Set to `true` and insert google creds if desired
+  SHOULD_USE_TRANSLATION_API: "true"
+  # cred are set in Kubernetes Secret
+  # GOOGLE_CREDENTIALS_BASE64: ...
+
+  # These need to be configured to point to the local file server
+  STATIC_FILES_HOST: polis-file-server
+  STATIC_FILES_ADMINDASH_PORT: "80"
+  STATIC_FILES_PORT: "80"
+
+  AWS_REGION: us-east-1
+
+  # Options: maildev, aws-ses, mailgun
+  EMAIL_TRANSPORT_TYPES: mailgun
+  # api key set as kubernetes secret:
+  # MAILGUN_API_KEY: 
+  MAILGUN_DOMAIN: polis-test.digifinland.dev
+  MAILGUN_ENDPOINT: api.eu.mailgun.net
+  # POLIS_FROM_ADDRESS="Example <team@example.com>"
+  POLIS_FROM_ADDRESS: "Polis <polis@polis-test.digifinland.dev>"
+
+  # These pieces of functionality will likely be removed in the near future
+  STRIPE_SECRET_KEY: sk_test_NFBDEThkpHCYBzXPJuBlY8TW
+
+  # Note(geoah): This seems to be needed until the following TODO is resolved:
+  # https://github.com/compdemocracy/polis/blob/9a294140bbfc50d5bbb50ce4e474f4ad72541881/server/src/session.ts#L8-L10
+  # this is set as Kubernetes Password
+  # ENCRYPTION_PASSWORD_00001: "PLEASE-CHANGE-ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polis-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: polis-server
+  template:
+    metadata:
+      labels:
+        app: polis-server
+    spec:
+      containers:
+        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-server:dev
+          imagePullPolicy: Always
+          name: polis-server
+          envFrom:
+          - secretRef:
+              name: polis-server-secret
+          - configMapRef:
+              name: polis-server
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              # /home gets proxied to polis-file-server - use api paths for checking polis-server health
+              # path: /home
+              path: /api/v3/testConnection 
+              port: 5000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 1000m
+              memory: 1000Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polis-server-service
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+  selector:
+    app: polis-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: polis-server-ingress
+spec:
+  rules:
+    - host: polis.local
+    # - host: polis-test-gke.digifinland.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: polis-server-service
+                port:
+                  number: 80
+
+

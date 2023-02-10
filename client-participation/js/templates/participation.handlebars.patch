@@ -1,0 +1,21 @@
+--- ./client-participation/js/templates/participation.handlebars	2023-02-02 10:25:55.874900500 +0200
++++ ../polis-digifinland-tools/client-participation/js/templates/participation.handlebars	2023-02-02 10:24:01.287781100 +0200
+@@ -435,7 +435,8 @@
+ 
+ 
+ {{!  ------------ BEGIN FOOTER ---------------  }}
+-{{#unless no_footer}}
++{{! inverted 'unless' to 'if' for hiding footer here: #unless no_footer }}
++{{#if no_footer}}
+ 
+   <div style="margin-top: 40px; margin-bottom: 20px;">
+     <a href="https://pol.is" target="_blank" dir="auto">
+@@ -464,7 +465,7 @@
+       </a>
+     </div>
+   </div> --}}
+-{{/unless}}
++{{/if}}
+   {{! END FOOTER}}
+ {{!  ------------ END FOOTER ---------------  }}
+ 
