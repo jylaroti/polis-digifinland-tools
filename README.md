@@ -16,7 +16,7 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
 3. Clone this repository into working dir.
 
     ```
-    TODO
+    git clone git@github.com:polis-digifinland-tools/polis-digifinland-tools.git
     ```
 
 
