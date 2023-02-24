@@ -157,7 +157,7 @@ sudo cp -rf ./embed-test-site/* /var/www/html/embed-test-site/
 
 ## Run only the polis-server container
 ```
-DOCKER_ENV=dev docker-compose -f docker-compose-digifinland-from-registry.yml up server
+DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml --env-file digifinland-dev.env up server
 ```
 
 ## Scale server to 2 replicas:
@@ -165,5 +165,5 @@ DOCKER_ENV=dev docker-compose -f docker-compose-digifinland-from-registry.yml up
 Due to docker compose timing issue with replica port allocation we might need to run this twice (as many times as number of replicas):
 
 ```
-DOCKER_ENV=dev docker compose -f docker-compose-digifinland-from-registry.yml up -d --no-deps --scale server=2
+DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml --env-file digifinland-dev.env up -d --no-deps --scale server=2
 ```

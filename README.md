@@ -64,7 +64,7 @@ Script takes env identifier (dev or test) as argument.
 ## Scale polis-server
 ```
 cd ./polis/
-DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml up -d --no-deps --scale server=2
+DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml --env-file digifinland-dev.env up -d --no-deps --scale server=2
 ```
 
 ## Stop and remove containers
