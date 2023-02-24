@@ -61,33 +61,64 @@ kubectl logs -l app=polis-server --timestamps=true --all-containers=true -f --pr
 
 ## Deploy to GKE 
 
-First login (or activate service account) and select correct cluster
+First login (or activate service account) and select correct cluster - test:
 ```
 gcloud auth login
 gcloud container clusters get-credentials polis-kokeilu-test-cluster --zone europe-north1-c
 ```
+Prod:
+```
+gcloud auth login
+gcloud container clusters get-credentials polis-kokeilu-prod-cluster --zone europe-north1-c
+```
 
-When deploying from local, create SSH tunnel to cluster endpoint through test VM (or later use bastion if available):
+
+When deploying from local, create SSH tunnel to cluster endpoint through test VM (for test cluster):
 ```
 gcloud compute ssh --zone "europe-north1-a" "[username]@polis-test"  --project "polis-kokeilu" --tunnel-through-iap  --ssh-key-file=~/.ssh/google_compute_engine -- -NL 5443:10.103.2.50:443
 ```
+Using bastion from local (for production cluster):
+```
+gcloud compute ssh --zone "europe-north1-a" "[username]@polis-prod-bastion"  --project "polis-kokeilu-prod" --tunnel-through-iap  --ssh-key-file=~/.ssh/google_compute_engine -- -NL 5443:10.103.2.82:443
+```
 
-Set GKE cluster as kubectl context
+
+
+Set GKE cluster as kubectl context - test:
 ```
 kubectl config use-context gke_polis-kokeilu_europe-north1-c_polis-kokeilu-test-cluster
 ```
+prod:
+```
+kubectl config use-context gke_polis-kokeilu-prod_europe-north1-c_polis-kokeilu-prod-cluster
+```
 
-Apply manifests and use cluster endpoint through SSH tunnel
+
+Apply manifests and use cluster endpoint through SSH tunnel (test):
 ```
 kubectl apply -f manifests/secrets/polis-math-digifinland-secret-gke-test.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
 
 kubectl apply -f manifests/secrets/polis-server-digifinland-secret-gke-test.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
 
-kubectl apply -f manifests/gke-test-from-registry/polis-file-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+kubectl apply -f manifests/gke-test/polis-file-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
 
-kubectl apply -f manifests/gke-test-from-registry/polis-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+kubectl apply -f manifests/gke-test/polis-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
 
-kubectl apply -f manifests/gke-test-from-registry/polis-math-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+kubectl apply -f manifests/gke-test/polis-math-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+```
+
+Apply manifests and use cluster endpoint through SSH tunnel (prod):
+```
+kubectl apply -f manifests/secrets/polis-math-digifinland-secret-gke-prod.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+
+kubectl apply -f manifests/secrets/polis-server-digifinland-secret-gke-prod.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+
+kubectl apply -f manifests/gke-prod/polis-file-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+
+kubectl apply -f manifests/gke-prod/polis-server-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+
+kubectl apply -f manifests/gke-prod/polis-math-digifinland.yaml --server=https://localhost:5443 --insecure-skip-tls-verify=true
+
 ```
 
 Get shell access to a pod for debugging: 

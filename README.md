@@ -35,18 +35,13 @@ To simulate GKE + Cloud SQL (GCE VM) based deployment, install Postgres V13 on y
 
 ## Patch codebase
 
-To patch polis with DigiFinland customizations and settings run patch script and give desired env as argument (dev or test).
+To patch polis with DigiFinland customizations and settings run patch script.
 
 This fetches latest Polis version from origin/edge branch and adds configs and patches. 
 
 ```
 cd ./polis-digifinland-tools/
-./scripts/patch-polis-codebase.sh dev
-```
-
-To patch with `test` env settings:
-```
-./scripts/patch-polis-codebase.sh test
+./scripts/patch-polis-codebase.sh
 ```
 
 # Docker
@@ -66,15 +61,6 @@ Script takes env identifier (dev or test) as argument.
 ./scripts/docker-compose_build-and-deploy.sh dev
 ```
 
-## Run Docker Compose with prebuilt images loaded from registry
-
-Script takes env identifier (dev or test) as argument. This is also used as a tag for pulling correct images from registry.
-
-```
-./scripts/docker-compose_deploy-from-registry dev
-```
-
-
 ## Scale polis-server
 ```
 cd ./polis/
@@ -85,7 +71,7 @@ DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml up -d --no-deps 
 
 Takes env identifier (dev or test) as argument. 
 ```
-./stop_docker-compose.sh dev
+./scripts/docker-compose_stop.sh dev
 ```
 
 # Minikube & Skaffold
@@ -110,7 +96,19 @@ Deploys prebuilt images from registry to local Minikube cluster with kubectl:
 
 # Test Server and GKE clusters
 
-For documentation about setting up Test Server on GCE virtual machine manually, and setting up test and production GKE clusters, see documentation in Confluence workspace.
+For detailed documentation about setting up Test Server on GCE virtual machine manually, and setting up test and production GKE clusters, see documentation in Confluence workspace.
+
+Build images and push to test project's artifact repository:
+```
+./scripts/docker_images-build-and-push.sh test
+```
+
+Build images and push to production project's artifact repository:
+```
+./scripts/docker_images-build-and-push-prod.sh prod
+```
+
+
 
 # Tips and Troubleshooting
 

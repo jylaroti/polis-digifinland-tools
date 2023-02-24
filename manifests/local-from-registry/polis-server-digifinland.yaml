@@ -3,59 +3,100 @@ kind: ConfigMap
 metadata:
   name: polis-server
 data:
-  # For admin functionality, fill this out
-  ADMIN_EMAILS: "[]"
-  ADMIN_EMAIL_DATA_EXPORT: ""
-  ADMIN_EMAIL_DATA_EXPORT_TEST: ""
-  ADMIN_EMAIL_EMAIL_TEST: ""
   ADMIN_UIDS: "[]"
+  EMAIL_TRANSPORT_TYPES: "mailgun"
+  # (Deprecated) Used internally by Node.Crypto.
+  ENCRYPTION_PASSWORD_00001:
+  # Optionally set this manually or use `git rev-parse HEAD`. It can be useful for debugging.
+  GIT_HASH:
+  # Options: prod, preprod, dev:
+  MATH_ENV: "dev"
+  # Options: local, s3, scp
+  REPORT_UPLOADER: "local"
+  SCP_SUBDIR_PREPROD:
+  SCP_SUBDIR_PROD:
+  # (Deprecated) Settings for submitting web requests to the math worker.
+  WEBSERVER_PASS: "ws-pass"
+  WEBSERVER_USERNAME: "ws-user"
 
-  DATABASE_FOR_READS_NAME: DATABASE_URL
+  READ_ONLY_DATABASE_URL:
   # DATABASE_URL is passed as Secret
-  # DATABASE_URL: 
+  # DATABASE_URL:
 
-  # TODO - these aren't used, remove:
-  WEBSERVER_USERNAME: ws-user
-  WEBSERVER_PASS: ws-pass
+  ###### PORTS ######
+  API_SERVER_PORT: "5000"
+  HTTP_PORT: "80"
+  HTTPS_PORT: "443"
+  STATIC_FILES_PORT: "8080"
+  # These ports could actually be different in development or if you are hosting clint-admin,
+  # client-participation, and file-server on different servers or containers.
+  STATIC_FILES_ADMIN_PORT: "8080"
+  STATIC_FILES_CLIENT_PORT: "8080"
 
-  # Set to `false` for production
-  DEV_MODE: "false"
-
-  # Set the domain name; make sure this matches what"s running on math node
-  DOMAIN_OVERRIDE: polis.local
-
-  # Options: prod, preprod, dev
-  MATH_ENV: dev
-  PORT: "5000"
-
-  # Set to `true` and insert google creds if desired
-  SHOULD_USE_TRANSLATION_API: "true"
-  # cred are set in Kubernetes Secret
-  # GOOGLE_CREDENTIALS_BASE64: ...
-
-  # These need to be configured to point to the local file server
-  STATIC_FILES_HOST: polis-file-server
-  STATIC_FILES_ADMINDASH_PORT: "80"
-  STATIC_FILES_PORT: "80"
-
-  AWS_REGION: us-east-1
-
-  # Options: maildev, aws-ses, mailgun
-  EMAIL_TRANSPORT_TYPES: mailgun
-  # api key set as kubernetes secret:
-  # MAILGUN_API_KEY: 
-  MAILGUN_DOMAIN: polis-test.digifinland.dev
-  MAILGUN_ENDPOINT: api.eu.mailgun.net
-  # POLIS_FROM_ADDRESS="Example <team@example.com>"
+  ###### EMAIL ADDRESSES ######
+  ADMIN_EMAIL_DATA_EXPORT_TEST:
+  ADMIN_EMAIL_DATA_EXPORT:
+  ADMIN_EMAIL_EMAIL_TEST:
+  ADMIN_EMAILS: "[]"
   POLIS_FROM_ADDRESS: "Polis <polis@polis-test.digifinland.dev>"
 
-  # These pieces of functionality will likely be removed in the near future
-  STRIPE_SECRET_KEY: sk_test_NFBDEThkpHCYBzXPJuBlY8TW
+  ###### BOOLEAN FLAGS ######
+  # (false by default):
+  BACKFILL_COMMENT_LANG_DETECTION:
+  CACHE_MATH_RESULTS:
+  # Set to `false` for production:
+  DEV_MODE: "false"
+  RUN_PERIODIC_EXPORT_TESTS:
+  SHOULD_USE_TRANSLATION_API: "true"
+  # SHOULD_USE_TRANSLATION_API: "false"
 
-  # Note(geoah): This seems to be needed until the following TODO is resolved:
-  # https://github.com/compdemocracy/polis/blob/9a294140bbfc50d5bbb50ce4e474f4ad72541881/server/src/session.ts#L8-L10
-  # this is set as Kubernetes Password
-  # ENCRYPTION_PASSWORD_00001: "PLEASE-CHANGE-ME"
+  ###### CUSTOM URL/HOSTNAME SETTINGS ######
+  # If you are running a development server anywhere other than localhost:80 or localhost:5000,
+  # you need to update API_DEV_HOSTNAME and EMBED_SERVICE_HOSTNAME.
+  API_DEV_HOSTNAME: "polis.local"
+  # If you are running polis on a custom domain, set both API_SERVER_HOSTNAME and DOMAIN_OVERRIDE
+  # to the same value. In the future these will be combined into one setting.
+  API_SERVER_HOSTNAME: "polis.local"
+  DOMAIN_OVERRIDE: "polis.local"
+  DOMAIN_WHITELIST_ITEM_01: "polis.local"
+  DOMAIN_WHITELIST_ITEM_02: "polis-test.digifinland.dev"
+  DOMAIN_WHITELIST_ITEM_03: "polis-test-gke.digifinland.dev"
+  DOMAIN_WHITELIST_ITEM_04: "polis.digifinland.fi"
+  DOMAIN_WHITELIST_ITEM_05:
+  DOMAIN_WHITELIST_ITEM_06:
+  DOMAIN_WHITELIST_ITEM_07:
+  DOMAIN_WHITELIST_ITEM_08:
+  # In production, should match API_SERVER_HOSTNAME or DOMAIN_OVERRIDE, if set:
+  EMBED_SERVICE_HOSTNAME: "polis.local"
+  # Full hostname with protocol of your API server:
+  REPORT_SERVICE_URL: "http://polis.local:5000"
+  # STATIC_FILES_HOST: "file-server"
+  STATIC_FILES_HOST: "polis-file-server"
+
+  ###### THIRD PARTY API CREDENTIALS ######
+  # These are all optional, but some features will not work without them.
+  AKISMET_ANTISPAM_API_KEY:
+  # Used for S3 data import/export:
+  AWS_REGION:
+  # Must register with facebook and get a facebook app id to use the facebook auth features:
+  FB_APP_ID:
+  # GOOGLE_CREDENTIALS_BASE64 are given as Secret
+  # GOOGLE_CREDENTIALS_BASE64: 
+  GOOGLE_CREDS_STRINGIFIED:
+  MAILGUN_DOMAIN: "polis-test.digifinland.dev"
+  MAILGUN_ENDPOINT: "api.eu.mailgun.net"
+  MAXMIND_LICENSEKEY:
+  MAXMIND_USERID:
+  S3_BUCKET_PREPROD:
+  S3_BUCKET_PROD:
+  TWITTER_CONSUMER_KEY:
+  TWITTER_CONSUMER_SECRET:
+  # Read from process.env by aws-sdk, if using SES for email transport
+  # https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/loading-node-credentials-environment.html
+  AWS_ACCESS_KEY_ID:
+  AWS_SECRET_ACCESS_KEY:
+  # This value is written by the server app if SHOULD_USE_TRANSLATION_API is true.
+  GOOGLE_APPLICATION_CREDENTIALS: 
 ---
 apiVersion: apps/v1
 kind: Deployment

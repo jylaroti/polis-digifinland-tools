@@ -6,6 +6,7 @@
 # before running, first authenticate and configure gcloud:
 # gcloud auth login
 # gcloud auth configure-docker europe-north1-docker.pkg.dev
+# gcloud config set project polis-kokeilu
 
 cd ../polis/
 docker build . -f file-server/Dockerfile -t europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-file-server:$1

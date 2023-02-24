@@ -1,3 +1,4 @@
+// This file is deprecated since configuration unification update 17.2.2023
 module.exports = {
 
   //SERVICE_URL: 'http://localhost:5000',

@@ -15,6 +15,9 @@ var polislocal = "https://polis.local/";
 var polisDfTest = "https://polis-test.digifinland.dev/";
 // DF customization - add custom gke test domain
 var polisDfTestGke = "https://polis-test-gke.digifinland.dev/";
+// DF customization - add custom gke prod domain
+var polisDfProdGke = "https://polis.digifinland.fi/";
+
 
 var urlPrefix = prod;
 if (document.domain.indexOf("preprod") >= 0) {
@@ -57,6 +60,11 @@ if (document.domain.indexOf("polis-test.digifinland.dev") >= 0) {
 if (document.domain.indexOf("polis-test-gke.digifinland.dev") >= 0) {
   urlPrefix = polisDfTestGke;
 }
+// DF customization - add custom gke testdomain
+if (document.domain.indexOf("polis.digifinland.fi") >= 0) {
+  urlPrefix = polisDfProdGke;
+}
+
 
 function isPreprod() {
   return urlPrefix === preprod;
@@ -66,9 +74,8 @@ function isLocalhost() {
   //return urlPrefix === localhost || urlPrefix === localhost8000;
   return urlPrefix === localhost;
 }
-const foo = {
+export default {
   urlPrefix: urlPrefix,
   isPreprod: isPreprod,
   isLocalhost: isLocalhost
 };
-export default foo;

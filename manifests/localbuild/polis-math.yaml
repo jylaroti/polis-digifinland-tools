@@ -3,9 +3,9 @@ kind: ConfigMap
 metadata:
   name: polis-math
 data:
-  DATABASE_URL: postgres://polistestu:polistestpw@host.docker.internal:5432/polistestdb
-  WEBSERVER_USERNAME: ws-user
-  WEBSERVER_PASS: ws-pass
+  WEBSERVER_USERNAME: "ws-user"
+  WEBSERVER_PASS: "ws-pass"
+  MATH_ENV: "dev"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,6 +24,8 @@ spec:
         - image: docker.io/compdem/polis-math:dev
           name: polis-math
           envFrom:
+          - secretRef:
+              name: polis-math-secret             
           - configMapRef:
               name: polis-math
           ports:

@@ -6,7 +6,7 @@
 cd ../polis/
 
 # build and run
-DOCKER_ENV=$1 docker compose -f docker-compose-digifinland.yml up -d --build 
+DOCKER_ENV=$1 docker compose -f docker-compose-digifinland.yml  --env-file digifinland-$1.env up -d --build 
 
 # list running containers
 docker ps

@@ -166,6 +166,21 @@ class SignIn extends React.Component {
     )
   }
 
+  drawTestEnvWarning() {
+    return (
+      <span>
+      <Heading as="h2" sx={{ my: [4, null, 5], fontSize: [4, null, 5] }}>
+        TESTIYMPÄRISTÖ
+      </Heading>      
+      <Heading as="h3" sx={{ my: [4, null, 5], fontSize: [3, null, 4] }}>
+        Käytä vain testaukseen. Älä jaa linkkejä.  
+      </Heading>      
+      </span>
+    )
+  }
+
+
+
   render() {
     const { signInSuccessful, authed } = this.props
 
@@ -178,6 +193,9 @@ class SignIn extends React.Component {
         <Heading as="h1" sx={{ my: [4, null, 5], fontSize: [6, null, 7] }}>
           Sign In
         </Heading>
+        { (window.location.hostname.includes('test') || window.location.hostname.includes('local'))
+          ? this.drawTestEnvWarning() 
+          : '' }
         {this.props.facebookError !== 'polis_err_user_with_this_email_exists'
           ? this.drawLoginForm()
           : this.drawPasswordConnectFacebookForm()}{' '}

@@ -5,9 +5,9 @@ metadata:
 data:
   # DATABASE URL is passed as Secret
   # DATABASE_URL:
-  # TODO - these aren't used, remove later:
-  WEBSERVER_USERNAME: ws-user
-  WEBSERVER_PASS: ws-pass
+  WEBSERVER_USERNAME: "ws-user"
+  WEBSERVER_PASS: "ws-pass"
+  MATH_ENV: "dev"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -1,3 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: polis-file-server
+data:
+  EMBED_SERVICE_HOSTNAME: "polis.local"
+  FB_APP_ID: 
+  PORT: "8080"
+  REPORT_UPLOADER: "local"
+  REPORT_SERVICE_URL: "http://polis.local:5000"
+  S3_BUCKET_PREPROD: 
+  S3_BUCKET_PROD: 
+  SCP_SUBDIR_PREPROD: 
+  SCP_SUBDIR_PROD: 
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

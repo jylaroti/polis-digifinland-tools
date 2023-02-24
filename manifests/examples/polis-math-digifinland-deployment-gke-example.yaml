@@ -5,9 +5,9 @@ metadata:
 data:
   # TODO - passing db url env here unsecure way (remove later if issues with Secret gets resolved):
   DATABASE_URL: postgres://user:password@ipaddress:port/databasename
-  # TODO - remove later if not needed:
-  WEBSERVER_USERNAME: ws-user
-  WEBSERVER_PASS: ws-pass
+  WEBSERVER_USERNAME: "ws-user"
+  WEBSERVER_PASS: "ws-pass"
+  MATH_ENV: "dev"  
 ---
 apiVersion: apps/v1
 kind: Deployment

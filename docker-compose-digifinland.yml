@@ -1,29 +1,35 @@
-# before running docker-compose up for the first time,
-# either do a pull:
-# docker-compose pull
-# or do a build:
-# GIT_HASH $(git rev-parse --short HEAD) docker-compose up --detach
-
-# subsequently you should only need to run:
-# docker-compose up --detach
-
-# force a full re-build with no cache from previous builds:
-# docker-compose build --build-arg GIT_HASH $(git rev-parse --short HEAD) --parallel --no-cache
-
-# to stop:
-# docker-compose down
-
-version: "3.4"
+# Before running docker compose up for the first time,
+# first copy the env.example file to .env and fill in the values.
+# `cp env.example digifinland-dev.env`
+# (edit values as needed)
+#
+# Then, build and run with:
+# `docker compose build`
+# `docker compose up`
+#
+# Subsequently you should only need to run:
+# `docker compose up`
+#
+# Force a full re-build with no cache from previous builds:
+# `docker compose build --no-cache`
+# `docker compose up`
+#
+# If you only changed the .env file, you can do a quick rebuild:
+# `docker compose up --force-recreate`
+#
+# To stop, press CTRL+C (if not running in --detach mode), or run:
+# `docker compose down`
 
 services:
   server:
-    env_file: ./server/docker-${DOCKER_ENV}-digifinland.env
-    image: docker.io/compdem/polis-server${DOCKER_ENV}
+    env_file: ./digifinland-${DOCKER_ENV:-dev}.env
+    image: docker.io/compdem/polis-server:${DOCKER_ENV:-dev}
     build:
       context: ./server
       dockerfile: Dockerfile
+      labels:
+        polis_tag: ${DOCKER_ENV:-dev}
     depends_on:
-# DF customization: remove dep (when used external DB from host)
 #      - "postgres"
       - "file-server"
     networks:
@@ -57,13 +63,19 @@ services:
 
   math:
     container_name: polis-math
-    env_file: ./math/docker-${DOCKER_ENV}-digifinland.env
-    image: docker.io/compdem/polis-math:${DOCKER_ENV}
+    image: docker.io/compdem/polis-math:${DOCKER_ENV:-dev}
 # DF customization: remove dep
 #    depends_on:
 #      - "postgres"
     build:
       context: ./math
+      labels:
+        polis_tag: ${DOCKER_ENV:-dev}
+    environment:
+      - DATABASE_URL=${DATABASE_URL:?error}
+      - MATH_ENV=${MATH_ENV:-dev}
+      - WEBSERVER_USERNAME=${WEBSERVER_USERNAME:?error}
+      - WEBSERVER_PASS=${WEBSERVER_PASS:?error}        
     networks:
       - "polis-net"
     extra_hosts:
@@ -108,13 +120,25 @@ services:
 #      - ${HTTPS_PORT:-443}:${HTTPS_PORT:-443}
 
   file-server:
-    container_name: polis-file-server
-    image: docker.io/compdem/polis-file-server:${DOCKER_ENV}
+    # container_name: polis-file-server
+    image: docker.io/compdem/polis-file-server:${DOCKER_ENV:-dev}
     build:
       context: ./
       dockerfile: file-server/Dockerfile
+      labels:
+        polis_tag: ${DOCKER_ENV:-dev}
       args:
-        GIT_HASH: "${GIT_HASH}"
+        GIT_HASH: "${GIT_HASH:-placeholder}"
+    environment:
+      - EMBED_SERVICE_HOSTNAME=${EMBED_SERVICE_HOSTNAME}
+      - FB_APP_ID=${FB_APP_ID}
+      - PORT=${STATIC_FILES_PORT:-8080}
+      - REPORT_UPLOADER=${REPORT_UPLOADER:-local}
+      - REPORT_SERVICE_URL=${REPORT_SERVICE_URL}
+      - S3_BUCKET_PREPROD=${S3_BUCKET_PREPROD}
+      - S3_BUCKET_PROD=${S3_BUCKET_PROD}
+      - SCP_SUBDIR_PREPROD=${SCP_SUBDIR_PREPROD}
+      - SCP_SUBDIR_PROD=${SCP_SUBDIR_PROD}
     networks:
       - "polis-net"
     deploy:
