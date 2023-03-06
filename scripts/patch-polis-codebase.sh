@@ -7,10 +7,13 @@
 cd ../polis/
 
 # to get latest version from edge, use:
-git reset --hard origin/edge
+# git reset --hard origin/edge
 
 # to get last working version before Polis configuration unification changes:
 # git reset --hard ad23ff57566ffe6be7d441709c235c574e5f97d7
+
+# to get Polis configuration unification changes:
+git reset --hard 5ecaf99d890615e72225f0ff7d3afc847a9f35e7
 
 # to use stable branch
 # git reset --hard origin/stable
@@ -33,7 +36,7 @@ cd ../polis-digifinland-tools/
 
 # main configs: 
 cp -r ./*.env ../polis/
-cp -r ./docker-compose-digifinland-*.yml ../polis/
+cp -r ./docker-compose-digifinland.yml ../polis/
 
 # apply selected patches
 cd ../polis/
