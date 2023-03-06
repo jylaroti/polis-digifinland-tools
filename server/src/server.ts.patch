@@ -25,7 +25,6 @@
 -      ip = ips.length && ips[0];
 -      info.encrypted_ip_address = encrypt(ip);
 -      info.encrypted_x_forwarded_for = encrypt(x_forwarded_for);
--      console.log("mike encrypt");
 -    }
 +    // if (x_forwarded_for) {
 +    //   let ips = x_forwarded_for;
@@ -33,7 +32,6 @@
 +    //   ip = ips.length && ips[0];
 +    //   info.encrypted_ip_address = encrypt(ip);
 +    //   info.encrypted_x_forwarded_for = encrypt(x_forwarded_for);
-+    //   console.log("mike encrypt");
 +    // }
      if (permanent_cookie) {
        info.permanent_cookie = permanent_cookie;

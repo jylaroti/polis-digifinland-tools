@@ -1,43 +1,5 @@
 --- ./client-admin/src/components/landers/signin.js	2023-02-22 09:36:32.354707300 +0200
 +++ ../polis-digifinland-tools/client-admin/src/components/landers/signin.js	2023-02-22 08:53:00.047233600 +0200
-@@ -120,19 +120,24 @@
-             <Link to={'/pwresetinit'}>Reset Password</Link>
-           </Text>
-         </form>
--        <Box sx={{ my: 4 }}>
--          <Button
--            id="facebookSigninButton"
--            onClick={this.facebookButtonClicked.bind(this)}>
--            Sign in with Facebook
--          </Button>
--          <Text sx={{ my: 2 }}>
--            If you click &apos;Sign in with Facebook&apos; and are not a pol.is
--            user, you will be registered and you agree to the pol.is terms and
--            privacy policy
--          </Text>
--        </Box>
--      </Box>
-+        
-+        {
-+        // hide FB signup
-+        // <Box sx={{ my: 4 }}>
-+        //  <Button
-+        //    id="facebookSigninButton"
-+        //    onClick={this.facebookButtonClicked.bind(this)}>
-+        //  </Box>    Sign in with Facebook
-+        //  </Button>
-+        //  <Text sx={{ my: 2 }}>
-+        //    If you click &apos;Sign in with Facebook&apos; and are not a pol.is
-+        //    user, you will be registered and you agree to the pol.is terms and
-+        //    privacy policy
-+        //  </Text>
-+        // </Box>
-+        }
-+        </Box> 
-+      
-     )
-   }
- 
 @@ -161,6 +166,21 @@
      )
    }

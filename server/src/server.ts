@@ -24,7 +24,6 @@ import OAuth from "oauth";
 //   token: process.env.PUSHOVER_POLIS_PROXY_API_KEY,
 // });
 // const postmark = require("postmark")(process.env.POSTMARK_API_KEY);
-import querystring from "querystring";
 import replaceStream from "replacestream";
 import responseTime from "response-time";
 import request from "request-promise"; // includes Request, but adds promise methods
@@ -40,8 +39,7 @@ import Password from "./auth/password";
 import dbPgQuery from "./db/pg-query";
 
 import Config from "./config";
-// Re-import disassembled code to promise existing code will work
-import Log from "./log";
+import fail from "./utils/fail";
 
 import {
   Body,
@@ -65,14 +63,11 @@ import {
   DemographicEntry,
   Demo,
   Vote,
-  Assignment,
 } from "./d";
 
-AWS.config.update({ region: process.env.AWS_REGION });
-const devMode = isTrue(process.env.DEV_MODE);
+AWS.config.update({ region: Config.awsRegion });
+const devMode = Config.isDevMode;
 const s3Client = new AWS.S3({ apiVersion: "2006-03-01" });
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const yell = Log.yell;
 // Property 'Client' does not exist on type '{ query: (...args: any[]) => void; query_readOnly:
 // (...args: any[]) => void; queryP: (...args: any[]) => Promise<unknown>; queryP_metered:
 // (name: any, queryString: any, params: any) => any; queryP_metered_readOnly:
@@ -108,10 +103,9 @@ import Comment from "./comment";
 import Utils from "./utils/common";
 import SQL from "./db/sql";
 // End of re-import
+import logger from "./utils/logger";
 
-// const winston = require("winston");
 // # notifications
-const winston = console;
 import emailSenders from "./email/senders";
 const sendTextEmail = emailSenders.sendTextEmail;
 const sendTextEmailWithBackupOnly = emailSenders.sendTextEmailWithBackupOnly;
@@ -135,104 +129,40 @@ if (devMode) {
 }
 
 // Bluebird uncaught error handler.
-Promise.onPossiblyUnhandledRejection(function (err: { stack: any }) {
-  console.log("onPossiblyUnhandledRejection");
-  if (_.isObject(err)) {
-    // since it may just throw as [object Object]
-    console.error(1);
-    console.dir(err);
-    console.error(2);
-    console.error(err);
-    console.error(3);
-
-    if (err && err.stack) {
-      console.error(err.stack);
-    }
-    try {
-      console.error(4);
-      console.error(JSON.stringify(err));
-    } catch (e) {
-      console.error(5);
-      console.error("stringify threw");
-    }
-  }
-  console.error(6);
+Promise.onPossiblyUnhandledRejection(function (err: any) {
+  logger.error('onPossiblyUnhandledRejection', err);
   // throw err; // not throwing since we're printing stack traces anyway
 });
 
-const adminEmailDataExport = process.env.ADMIN_EMAIL_DATA_EXPORT || "";
-const adminEmailDataExportTest = process.env.ADMIN_EMAIL_DATA_EXPORT_TEST || "";
-const adminEmailEmailTest = process.env.ADMIN_EMAIL_EMAIL_TEST || "";
+const adminEmails = Config.adminEmails
+  ? JSON.parse(Config.adminEmails)
+  : [];
 
-const admin_emails = process.env.ADMIN_EMAILS
-  ? JSON.parse(process.env.ADMIN_EMAILS)
+const polisDevs = Config.adminUIDs
+  ? JSON.parse(Config.adminUIDs)
   : [];
-const polisDevs = process.env.ADMIN_UIDS
-  ? JSON.parse(process.env.ADMIN_UIDS)
-  : [];
+
 function isPolisDev(uid?: any) {
-  console.log("polisDevs", polisDevs);
   return polisDevs.indexOf(uid) >= 0;
 }
-// log heap stats
-setInterval(function () {
-  let mem = process.memoryUsage();
-  let heapUsed = mem.heapUsed;
-  let rss = mem.rss;
-  let heapTotal = mem.heapTotal;
-  winston.log(
-    "info",
-    "heapUsed:",
-    heapUsed,
-    "heapTotal:",
-    heapTotal,
-    "rss:",
-    rss
-  );
-  // let start = Date.now();
 
-  //metric("api.process.mem.heapUsed", heapUsed, start);
-  //metric("api.process.mem.rss", rss, start);
-  //metric("api.process.mem.heapTotal", heapTotal, start);
-}, 10 * 1000);
-// // BEGIN GITHUB OAUTH2
-// let CLIENT_SECRET = "0b178e412a10fa023a0153bf7cefaf6dae0f74b9";
-// let CLIENT_ID = "109a1eb4732b3ec1075b";
-// let oauth2 = require('simple-oauth2')({
-//   clientID: CLIENT_ID,
-//   clientSecret: CLIENT_SECRET,
-//   site: 'https://github.com/login',
-//   tokenPath: '/oauth/access_token'
-// });
+const polisFromAddress = Config.polisFromAddress;
 
-// winston.log("info",oauth2);
+const serverUrl = Config.getServerUrl(); // typically https://pol.is or http://localhost:5000
 
-// // Authorization uri definition
-// let authorization_uri = oauth2.AuthCode.authorizeURL({
-//   redirect_uri: 'https://preprod.pol.is/oauth2/oauth2_github_callback',
-//   scope: 'notifications',
-//   state: '3(#0/!~'
-// });
-// // END GITHUB OAUTH2
-const POLIS_FROM_ADDRESS = process.env.POLIS_FROM_ADDRESS;
-
-const akismet = akismetLib.client({
-  blog: "https://pol.is", // required: your root level url
-  apiKey: process.env.AKISMET_ANTISPAM_API_KEY,
+let akismet = akismetLib.client({
+  blog: serverUrl,
+  apiKey: Config.akismetAntispamApiKey,
 });
 
 akismet.verifyKey(function (err: any, verified: any) {
   if (verified) {
-    winston.log("info", "Akismet: API key successfully verified.");
+    logger.debug("Akismet: API key successfully verified.");
   } else {
-    winston.log("info", "Akismet: Unable to verify API key.");
+    logger.debug("Akismet: Unable to verify API key.");
   }
 });
-// let SELF_HOSTNAME = "localhost:" + process.env.PORT;
-// if (!devMode) {
-// ^^^ possible to use localhost on Heroku?
-//  SELF_HOSTNAME = process.env.SERVICE_HOSTNAME
-//}
+// let SELF_HOSTNAME = Config.getServerHostname();
 
 function isSpam(o: {
   comment_content: any;
@@ -272,15 +202,6 @@ var INFO: {
   (message?: any, ...optionalParams: any[]): void;
   (): void;
 };
-if (devMode) {
-  INFO = console.log;
-
-  // INFO = function() {
-  //     winston.log.apply(console, arguments);
-  // };
-} else {
-  INFO = function () {};
-}
 
 // basic defaultdict implementation
 function DD(this: any, f: () => { votes: number; comments: number }) {
@@ -370,9 +291,6 @@ const encrypt = Session.encrypt;
 const decrypt = Session.decrypt;
 const makeSessionToken = Session.makeSessionToken;
 const getUserInfoForSessionToken = Session.getUserInfoForSessionToken;
-const createPolisLtiToken = Session.createPolisLtiToken;
-const isPolisLtiToken = Session.isPolisLtiToken;
-const getUserInfoForPolisLtiToken = Session.getUserInfoForPolisLtiToken;
 const startSession = Session.startSession;
 const endSession = Session.endSession;
 const setupPwReset = Session.setupPwReset;
@@ -430,9 +348,9 @@ function doApiKeyAuth(
       assigner(req, "uid", Number(rows[0].uid));
       next();
     })
-    .catch(function (err: { stack: any }) {
+    .catch(function (err: any) {
       res.status(403);
-      console.error(err.stack);
+      logger.error("polis_err_auth_no_such_api_token2", err);
       next("polis_err_auth_no_such_api_token2");
     });
 }
@@ -518,16 +436,15 @@ function doXidApiKeyAuth(
           next();
         });
       },
-      function (err: { stack: any }) {
+      function (err: any) {
         res.status(403);
-        console.error(err.stack);
+        logger.error("polis_err_auth_no_such_api_token3", err);
         next("polis_err_auth_no_such_api_token3");
       }
     )
-    .catch(function (err: { stack: any }) {
+    .catch(function (err: any) {
       res.status(403);
-      console.error(err);
-      console.error(err.stack);
+      logger.error("polis_err_auth_misc_23423", err);
       next("polis_err_auth_misc_23423");
     });
 }
@@ -558,31 +475,6 @@ function doHeaderAuth(
   });
 }
 
-function doPolisLtiTokenHeaderAuth(
-  assigner: (arg0: any, arg1: string, arg2: number) => void,
-  isOptional: any,
-  req: { headers?: { [x: string]: any } },
-  res: { status: (arg0: number) => void },
-  next: { (err: any): void; (arg0?: string): void }
-) {
-  let token = req?.headers?.["x-polis"];
-
-  getUserInfoForPolisLtiToken(token)
-    .then(function (uid?: any) {
-      assigner(req, "uid", Number(uid));
-      next();
-    })
-    .catch(function (err: any) {
-      res.status(403);
-      next("polis_err_auth_no_such_token");
-      return;
-    });
-}
-
-// function logPath(req, res, next) {
-//     winston.log("info",req.method + " " + req.url);
-//     next();
-// }
 // Property 'hashCode' does not exist on type 'String'.ts(2339)
 // @ts-ignore
 String.prototype.hashCode = function () {
@@ -599,9 +491,6 @@ String.prototype.hashCode = function () {
   }
   return hash;
 };
-
-const fail = Log.fail;
-const userFail = Log.userFail;
 
 function initializePolisHelpers() {
   // // If there are any comments which have no votes by the owner, create a PASS vote by the owner.
@@ -626,21 +515,15 @@ function initializePolisHelpers() {
   //                 return function(callback) {
   //                     votesPost(uid, c.pid, c.zid, c.tid, 0)
   //                         .then(function() {
-  //                             winston.log("info","ok " + c.txt);
   //                             callback(null);
   //                         })
   //                         .catch(function() {
-  //                             winston.log("info","failedd " + c.txt);
   //                             callback(1);
   //                         });
   //                 };
   //             }),
   //             function(err, results) {
-  //                 winston.log("info",err);
   //             });
-  //         winston.log("info",missing);
-  //         winston.log("info",missing.length);
-  //         winston.log("info",comments.length);
   //     });
   // });
 
@@ -648,10 +531,8 @@ function initializePolisHelpers() {
   const setCookie = cookies.setCookie;
   const setParentReferrerCookie = cookies.setParentReferrerCookie;
   const setParentUrlCookie = cookies.setParentUrlCookie;
-  const setPlanCookie = cookies.setPlanCookie;
   const setPermanentCookie = cookies.setPermanentCookie;
   const setCookieTestCookie = cookies.setCookieTestCookie;
-  const shouldSetCookieOnPolisDomain = cookies.shouldSetCookieOnPolisDomain;
   const addCookies = cookies.addCookies;
   const getPermanentCookieAndEnsureItIsSet =
     cookies.getPermanentCookieAndEnsureItIsSet;
@@ -685,7 +566,7 @@ function initializePolisHelpers() {
         }
       },
       function (err: any) {
-        console.error(err);
+        logger.error("error in recordPermanentCookieZidJoin", err);
         // hmm, weird, try inserting anyway
         return doInsert();
       }
@@ -694,7 +575,7 @@ function initializePolisHelpers() {
 
   const detectLanguage = Comment.detectLanguage;
 
-  if (isTrue(process.env.BACKFILL_COMMENT_LANG_DETECTION)) {
+  if (Config.backfillCommentLangDetection) {
     pgQueryP("select tid, txt, zid from comments where lang is null;", []).then(
       //   Argument of type '(comments: string | any[]) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.
       // Types of parameters 'comments' and 'value' are incompatible.
@@ -709,7 +590,7 @@ function initializePolisHelpers() {
             i += 1;
             detectLanguage(c.txt).then((x: DetectLanguageResult[]) => {
               const firstResult = x[0];
-              console.log("backfill", firstResult.language + "\t\t" + c.txt);
+              logger.debug("backfill " + firstResult.language + "\t\t" + c.txt);
               pgQueryP(
                 "update comments set lang = ($1), lang_confidence = ($2) where zid = ($3) and tid = ($4)",
                 [firstResult.language, firstResult.confidence, c.zid, c.tid]
@@ -731,7 +612,6 @@ function initializePolisHelpers() {
     tid?: any,
     voteType?: any,
     weight?: number,
-    shouldNotify?: any
   ) {
     let zid = conv?.zid;
     weight = weight || 0;
@@ -748,7 +628,7 @@ function initializePolisHelpers() {
           if (isDuplicateKey(err)) {
             reject("polis_err_vote_duplicate");
           } else {
-            console.dir(err);
+            logger.error("polis_err_vote_other", err);
             reject("polis_err_vote_other");
           }
           return;
@@ -771,7 +651,6 @@ function initializePolisHelpers() {
     tid?: any,
     voteType?: any,
     weight?: number,
-    shouldNotify?: boolean
   ) {
     return (
       pgQueryP_readOnly("select * from conversations where zid = ($1);", [zid])
@@ -824,7 +703,6 @@ function initializePolisHelpers() {
             tid,
             voteType,
             weight,
-            shouldNotify
           );
         })
     );
@@ -907,57 +785,14 @@ function initializePolisHelpers() {
       return next();
     }
 
-    if (!/https/.test(req?.headers?.["x-forwarded-proto"] || "")) {
+    const isHttps = req?.headers?.["x-forwarded-proto"] === "https";
+
+    if (!isHttps) {
       // assuming we're running on Heroku, where we're behind a proxy.
       res.writeHead(302, {
         Location: "https://" + req?.headers?.host + req.url,
       });
       return res.end();
-    }
-    return next();
-  }
-
-  function redirectIfWrongDomain(
-    req: { headers?: { host: string }; url: string },
-    res: {
-      writeHead: (arg0: number, arg1: { Location: string }) => void;
-      end: () => any;
-    },
-    next: () => any
-  ) {
-    // let reServiceHostname = new RegExp(process.env.SERVICE_HOSTNAME);
-    if (
-      // reServiceHostname.test(req?.headers?.host) || // needed for heroku integrations (like slack?)
-      /www.pol.is/.test(req?.headers?.host || "")
-    ) {
-      res.writeHead(302, {
-        Location: "https://pol.is" + req.url,
-      });
-      return res.end();
-    }
-    return next();
-  }
-
-  function redirectIfApiDomain(
-    req: { headers?: { host: string }; url: string },
-    res: {
-      writeHead: (arg0: number, arg1: { Location: string }) => void;
-      end: () => any;
-    },
-    next: () => any
-  ) {
-    if (/api.pol.is/.test(req?.headers?.host || "")) {
-      if (req.url === "/" || req.url === "") {
-        res.writeHead(302, {
-          Location: "https://pol.is/docs/api",
-        });
-        return res.end();
-      } else if (!req.url.match(/^\/?api/)) {
-        res.writeHead(302, {
-          Location: "https://pol.is/" + req.url,
-        });
-        return res.end();
-      }
     }
     return next();
   }
@@ -975,7 +810,6 @@ function initializePolisHelpers() {
   //     return new MPromise("createDummyUser", function(resolve, reject) {
   //         pgQuery(query,[], function(err, results) {
   //             if (err || !results || !results.rows || !results.rows.length) {
-  //                 console.error(err);
   //                 reject(new Error("polis_err_create_empty_user"));
   //                 return;
   //             }
@@ -1027,7 +861,7 @@ function initializePolisHelpers() {
         });
       })
       .catch((err: any) => {
-        console.log(err);
+        logger.error("doXidConversationIdAuth error", err);
         onDone(err);
       });
   }
@@ -1069,14 +903,10 @@ function initializePolisHelpers() {
           }
           resolve(req.p && req.p.uid);
         }
-        if (xPolisToken && isPolisLtiToken(xPolisToken)) {
-          console.log("authtype", "doPolisLtiTokenHeaderAuth");
-          doPolisLtiTokenHeaderAuth(assigner, isOptional, req, res, onDone);
-        } else if (xPolisToken) {
-          console.log("authtype", "doHeaderAuth");
+        if (xPolisToken) {
+          logger.info("authtype: doHeaderAuth");
           doHeaderAuth(assigner, isOptional, req, res, onDone);
         } else if (getKey(req, "polisApiKey") && getKey(req, "ownerXid")) {
-          console.log("authtype", "doXidApiKeyAuth");
           doXidApiKeyAuth(
             assigner,
             getKey(req, "polisApiKey"),
@@ -1087,7 +917,6 @@ function initializePolisHelpers() {
             onDone
           );
         } else if (getKey(req, "polisApiKey") && getKey(req, "xid")) {
-          console.log("authtype", "doXidApiKeyAuth");
           doXidApiKeyAuth(
             assigner,
             getKey(req, "polisApiKey"),
@@ -1105,7 +934,6 @@ function initializePolisHelpers() {
           //     req?.headers?.["x-sandstorm-app-polis-xid"],
           //     isOptional, req, res, onDone);
         } else if (getKey(req, "xid") && getKey(req, "conversation_id")) {
-          console.log("authtype", "doXidConversationIdAuth");
           doXidConversationIdAuth(
             assigner,
             getKey(req, "xid"),
@@ -1116,7 +944,6 @@ function initializePolisHelpers() {
             onDone
           );
         } else if (req?.headers?.["x-sandstorm-app-polis-apikey"]) {
-          console.log("authtype", "doApiKeyAuth");
           doApiKeyAuth(
             assigner,
             req?.headers?.["x-sandstorm-app-polis-apikey"],
@@ -1126,7 +953,6 @@ function initializePolisHelpers() {
             onDone
           );
         } else if (req.body["polisApiKey"]) {
-          console.log("authtype", "doApiKeyAuth");
           doApiKeyAuth(
             assigner,
             getKey(req, "polisApiKey"),
@@ -1136,10 +962,8 @@ function initializePolisHelpers() {
             onDone
           );
         } else if (token) {
-          console.log("authtype", "doCookieAuth");
           doCookieAuth(assigner, isOptional, req, res, onDone);
         } else if (req?.headers?.authorization) {
-          console.log("authtype", "doApiKeyBasicAuth");
           doApiKeyBasicAuth(
             assigner,
             req.headers.authorization,
@@ -1150,7 +974,6 @@ function initializePolisHelpers() {
           );
         } else if (req.body.agid) {
           // Auto Gen user  ID
-          console.log("authtype", "no auth but agid");
           createDummyUser()
             .then(
               function (uid?: any) {
@@ -1168,20 +991,20 @@ function initializePolisHelpers() {
                   },
                   function (err: any) {
                     res.status(500);
-                    console.error(err);
+                    logger.error("polis_err_auth_token_error_2343", err);
                     onDone("polis_err_auth_token_error_2343");
                   }
                 );
               },
               function (err: any) {
                 res.status(500);
-                console.error(err);
+                logger.error("polis_err_auth_token_error_1241", err);
                 onDone("polis_err_auth_token_error_1241");
               }
             )
             .catch(function (err: any) {
               res.status(500);
-              console.error(err);
+              logger.error("polis_err_auth_token_error_5345", err);
               onDone("polis_err_auth_token_error_5345");
             });
         } else if (isOptional) {
@@ -1203,7 +1026,7 @@ function initializePolisHelpers() {
         })
         .catch((err: any) => {
           res.status(500);
-          console.error(err);
+          logger.error("polis_err_auth_error_432", err);
           next(err || "polis_err_auth_error_432");
         });
     };
@@ -1212,39 +1035,27 @@ function initializePolisHelpers() {
     //   let hasXid = !_.isUndefined(xid);
 
     //   if (hasXid) {
-    //     console.log('weee 0');
     //     req.p = req.p || {};
     //     req.p.xid = xid;
-    //     console.log('xidflow has');
     //     getConversationIdFetchZid(req.body.conversation_id).then((zid) => {
-    //       console.log('xidflow got zid', zid);
 
     //       return getXidStuff(xid, zid).then((xidRecord) => {
-    //         console.log('xidflow got xidRecord', xidRecord);
     //         let foundXidRecord = xidRecord !== "noXidRecord";
     //         if (foundXidRecord) {
-    //           console.log('xidflow !shouldCreateXidRecord');
     //           assigner(req, "uid", Number(xidRecord.uid));
     //           return next();
     //         }
-    //         console.log('xidflow before doAuth');
     //         // try other auth methods, and once those are done, use req.p.uid to create new xid record.
     //         doAuth(req, res).then(() => {
-    //           console.log('xidflow after doAuth');
     //           if (req.p.uid && !isOptional) { // req.p.uid might be set now.
-    //             console.log('xidflow uid', req.p.uid);
     //             return createXidRecordByZid(zid, req.p.uid, xid, req.body.x_profile_image_url, req.body.x_name, req.body.x_email);
     //           } else if (!isOptional) {
-    //             console.log('xidflow no uid, but mandatory', req.p.uid);
     //             throw "polis_err_missing_non_optional_uid";
     //           }
-    //           console.log('xidflow was optional, doing nothing');
     //         }).then(() => {
-    //           console.log('xidflow ok');
     //           return next();
     //         }).catch((err) => {
     //           res.status(500);
-    //           console.error(err);
     //           return next("polis_err_auth_xid_error_423423");
     //         });
     //       });
@@ -1254,7 +1065,6 @@ function initializePolisHelpers() {
     //       return next();
     //     }).catch((err) => {
     //       res.status(500);
-    //       console.error(err);
     //       next("polis_err_auth_error_432");
     //     });
     //   }
@@ -1310,24 +1120,13 @@ function initializePolisHelpers() {
   ];
 
   let whitelistedDomains = [
-    "pol.is",
-    process.env.DOMAIN_WHITELIST_ITEM_01,
-    process.env.DOMAIN_WHITELIST_ITEM_02,
-    process.env.DOMAIN_WHITELIST_ITEM_03,
-    process.env.DOMAIN_WHITELIST_ITEM_04,
-    process.env.DOMAIN_WHITELIST_ITEM_05,
-    process.env.DOMAIN_WHITELIST_ITEM_06,
-    process.env.DOMAIN_WHITELIST_ITEM_07,
-    process.env.DOMAIN_WHITELIST_ITEM_08,
+    Config.getServerHostname(),
+    ...Config.whitelistItems,
+    "localhost:5000",
     "localhost:5001",
     "localhost:5002",
-    "canvas.instructure.com", // LTI
-    "canvas.uw.edu", // LTI
-    "canvas.shoreline.edu", // LTI
-    "shoreline.instructure.com", // LTI
     "facebook.com",
     "api.twitter.com",
-    "connect.stripe.com",
     "", // for API
   ];
 
@@ -1407,10 +1206,7 @@ function initializePolisHelpers() {
       !hasWhitelistMatches(host) &&
       !routeIsWhitelistedForAnyDomain
     ) {
-      winston.log("info", "not whitelisted");
-      // winston.log("info",req);
-      winston.log("info", req.headers);
-      winston.log("info", req.path);
+      logger.info("not whitelisted", { headers: req.headers, path: req.path });
       return next("unauthorized domain: " + host);
     }
     if (host === "") {
@@ -1457,21 +1253,15 @@ function initializePolisHelpers() {
     },
     res: { redirect: (arg0: any) => void }
   ) {
-    let setOnPolisDomain = !domainOverride;
-    let origin = req?.headers?.origin || "";
-    if (setOnPolisDomain && origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-      setOnPolisDomain = false;
-    }
-
     if (!req.cookies[COOKIES.PERMANENT_COOKIE]) {
-      setPermanentCookie(req, res, setOnPolisDomain, makeSessionToken());
+      setPermanentCookie(req, res, makeSessionToken());
     }
-    setCookieTestCookie(req, res, setOnPolisDomain);
+    setCookieTestCookie(req, res);
 
     // Argument of type '{ redirect: (arg0: any) => void; }' is not assignable to parameter of type '{ cookie: (arg0: any, arg1: any, arg2: any) => void; }'.
     // Property 'cookie' is missing in type '{ redirect: (arg0: any) => void; }' but required in type '{ cookie: (arg0: any, arg1: any, arg2: any) => void; }'.ts(2345)
     // @ts-ignore
-    setCookie(req, res, setOnPolisDomain, "top", "ok", {
+    setCookie(req, res, "top", "ok", {
       httpOnly: false, // not httpOnly - needed by JS
     });
 
@@ -1479,21 +1269,6 @@ function initializePolisHelpers() {
     let dest = hexToStr(req.p.dest);
     res.redirect(dest);
   }
-  // function handle_GET_setFirstCookie(req, res) {
-  //     let setOnPolisDomain = !domainOverride;
-  //     let origin = req?.headers?.origin || "";
-  //     if (setOnPolisDomain && origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-  //         setOnPolisDomain = false;
-  //     }
-
-  //     if (!req.cookies[COOKIES.PERMANENT_COOKIE]) {
-  //         setPermanentCookie(req, res, setOnPolisDomain, makeSessionToken());
-  //     }
-  //     setCookie(req, res, setOnPolisDomain, "top", "ok", {
-  //         httpOnly: false,            // not httpOnly - needed by JS
-  //     });
-  //     res.status(200).json({});
-  // });
 
   function handle_GET_tryCookie(
     req: { headers?: { origin: string }; cookies: { [x: string]: any } },
@@ -1503,12 +1278,6 @@ function initializePolisHelpers() {
       ) => { (): any; new (): any; json: { (arg0: {}): void; new (): any } };
     }
   ) {
-    let setOnPolisDomain = !domainOverride;
-    let origin = req?.headers?.origin || "";
-    if (setOnPolisDomain && origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-      setOnPolisDomain = false;
-    }
-
     if (!req.cookies[COOKIES.TRY_COOKIE]) {
       // Argument of type '{ status: (arg0: number) => { (): any; new (): any; json:
       // { (arg0: {}): void; new (): any; }; }; }' is not assignable to parameter of type
@@ -1517,13 +1286,13 @@ function initializePolisHelpers() {
       // { (): any; new (): any; json: { (arg0: {}): void; new (): any; }; };
       // } ' but required in type '{ cookie: (arg0: any, arg1: any, arg2: any) => void; } '.ts(2345)
       // @ts-ignore
-      setCookie(req, res, setOnPolisDomain, COOKIES.TRY_COOKIE, "ok", {
+      setCookie(req, res, COOKIES.TRY_COOKIE, "ok", {
         httpOnly: false, // not httpOnly - needed by JS
       });
     }
     res.status(200).json({});
   }
-  let pcaCacheSize = process.env.CACHE_MATH_RESULTS === "true" ? 300 : 1;
+  let pcaCacheSize = Config.cacheMathResults ? 300 : 1;
   let pcaCache = new LruCache({
     max: pcaCacheSize,
   });
@@ -1550,7 +1319,7 @@ function initializePolisHelpers() {
       .then((rows: any[]) => {
         if (!rows || !rows.length) {
           // call again
-          INFO("mathpoll done");
+          logger.info("mathpoll done");
           setTimeout(fetchAndCacheLatestPcaData, waitTime());
           return;
         }
@@ -1566,7 +1335,10 @@ function initializePolisHelpers() {
               item.caching_tick = Number(row.caching_tick);
             }
 
-            INFO("mathpoll updating", item.caching_tick, item.zid);
+            logger.info("mathpoll updating", {
+              caching_tick: item.caching_tick,
+              zid: item.zid,
+            });
 
             // let prev = pcaCache.get(item.zid);
             if (item.caching_tick > lastPrefetchedMathTick) {
@@ -1583,7 +1355,7 @@ function initializePolisHelpers() {
         });
       })
       .catch((err: any) => {
-        INFO("mathpoll error", err);
+        logger.error("mathpoll error", err);
         setTimeout(fetchAndCacheLatestPcaData, waitTime());
       });
   }
@@ -1733,10 +1505,8 @@ function initializePolisHelpers() {
     //   var s1 = groupVotes[1].val['n-members'];
     //   const scaleRatio = 1.1;
     //   if (s1 * scaleRatio < s0) {
-    //     console.log('splitting 0', s0, s1, s1*scaleRatio);
     //     o = splitTopLevelGroup(o, groupVotes[0].id);
     //   } else if (s0 * scaleRatio < s1) {
-    //     console.log('splitting 1', s0, s1, s0*scaleRatio);
     //     o = splitTopLevelGroup(o, groupVotes[1].id);
     //   }
     // }
@@ -1797,23 +1567,19 @@ function initializePolisHelpers() {
     let cachedPOJO = cached && cached.asPOJO;
     if (cachedPOJO) {
       if (cachedPOJO.math_tick <= (math_tick || 0)) {
-        INFO(
-          "mathpoll related",
-          "math was cached but not new: zid=",
+        logger.info("math was cached but not new", {
           zid,
-          "cached math_tick=",
-          cachedPOJO.math_tick,
-          "query math_tick=",
-          math_tick
-        );
+          cached_math_tick: cachedPOJO.math_tick,
+          query_math_tick: math_tick,
+        });
         return Promise.resolve(null);
       } else {
-        INFO("mathpoll related", "math from cache", zid, math_tick);
+        logger.info("math from cache", { zid, math_tick });
         return Promise.resolve(cached);
       }
     }
 
-    INFO("mathpoll cache miss", zid, math_tick);
+    logger.info("mathpoll cache miss", { zid, math_tick });
 
     // NOTE: not caching results from this query for now, think about this later.
     // not caching these means that conversations without new votes might not be cached. (closed conversations may be slower to load)
@@ -1823,7 +1589,7 @@ function initializePolisHelpers() {
 
     return pgQueryP_readOnly(
       "select * from math_main where zid = ($1) and math_env = ($2);",
-      [zid, process.env.MATH_ENV]
+      [zid, Config.mathEnv]
       //     Argument of type '(rows: string | any[]) => Promise<any> | null' is not assignable to parameter of type '(value: unknown) => any'.
       // Types of parameters 'rows' and 'value' are incompatible.
       //   Type 'unknown' is not assignable to type 'string | any[]'.
@@ -1835,11 +1601,14 @@ function initializePolisHelpers() {
       addInRamMetric("pcaGetQuery", queryDuration);
 
       if (!rows || !rows.length) {
-        INFO("mathpoll related; after cache miss, unable to find data for", {
-          zid,
-          math_tick,
-          math_env: process.env.MATH_ENV,
-        });
+        logger.info(
+          "mathpoll related; after cache miss, unable to find data for",
+          {
+            zid,
+            math_tick,
+            math_env: Config.mathEnv,
+          }
+        );
         return null;
       }
       let item = rows[0].data;
@@ -1849,20 +1618,16 @@ function initializePolisHelpers() {
       }
 
       if (item.math_tick <= (math_tick || 0)) {
-        INFO(
-          "mathpoll related",
-          "after cache miss, unable to find newer item",
+        logger.info("after cache miss, unable to find newer item", {
           zid,
-          math_tick
-        );
+          math_tick,
+        });
         return null;
       }
-      INFO(
-        "mathpoll related",
-        "after cache miss, found item, adding to cache",
+      logger.info("after cache miss, found item, adding to cache", {
         zid,
-        math_tick
-      );
+        math_tick,
+      });
 
       processMathObject(item);
 
@@ -1908,7 +1673,7 @@ function initializePolisHelpers() {
     });
   }
   function redirectIfHasZidButNoConversationId(
-    req: { body: { zid: any; conversation_id: any } },
+    req: { body: { zid: any; conversation_id: any }, headers?: any },
     res: {
       writeHead: (arg0: number, arg1: { Location: string }) => void;
       end: () => any;
@@ -1916,9 +1681,13 @@ function initializePolisHelpers() {
     next: () => any
   ) {
     if (req.body.zid && !req.body.conversation_id) {
-      winston.log("info", "redirecting old zid user to about page");
+      logger.info("redirecting old zid user to about page");
+
+      const path = "/about";
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+
       res.writeHead(302, {
-        Location: "https://pol.is/about",
+        Location: protocol + "://" + req?.headers?.host + path,
       });
       return res.end();
     }
@@ -2038,19 +1807,6 @@ function initializePolisHelpers() {
         fail(res, 500, err);
       });
   }
-  /*
-      addConversationId(o).then(function(item) {
-          // ensure we don't expose zid
-          if (item.zid) {
-              delete item.zid;
-          }
-          res.status(200).json(item);
-      }, function(err) {
-          fail(res, 500, "polis_err_finishing_responseA", err);
-      }).catch(function(err) {
-          fail(res, 500, "polis_err_finishing_response", err);
-      });
-  */
 
   function getZidForRid(rid: any) {
     return pgQueryP("select zid from reports where rid = ($1);", [rid]).then(
@@ -2078,7 +1834,7 @@ function initializePolisHelpers() {
   ) {
     let zid = req.p.zid;
     let uid = req.p.uid;
-    let math_env = process.env.MATH_ENV;
+    let math_env = Config.mathEnv;
     let math_update_type = req.p.math_update_type;
 
     isModerator(zid, uid).then((hasPermission: any) => {
@@ -2119,10 +1875,9 @@ function initializePolisHelpers() {
     }
   ) {
     let rid = req.p.rid;
-    let math_env = process.env.MATH_ENV;
+    let math_env = Config.mathEnv;
     let math_tick = req.p.math_tick;
 
-    console.log(req.p);
     function finishAsPending() {
       res.status(202).json({
         status: "pending",
@@ -2225,13 +1980,13 @@ function initializePolisHelpers() {
     );
   }
   if (
-    process.env.RUN_PERIODIC_EXPORT_TESTS &&
+    Config.runPeriodicExportTests &&
     !devMode &&
-    process.env.MATH_ENV === "preprod"
+    Config.mathEnv === "preprod"
   ) {
     let runExportTest = () => {
       let math_env = "prod";
-      let email = adminEmailDataExportTest;
+      let email = Config.adminEmailDataExportTest;
       let zid = 12480;
       let atDate = Date.now();
       let format = "csv";
@@ -2260,9 +2015,9 @@ function initializePolisHelpers() {
               newOk = rows[0].finished_time > 0;
             }
             if (ok && newOk) {
-              console.log("runExportTest success");
+              logger.info("runExportTest success");
             } else {
-              console.log("runExportTest failed");
+              logger.error("runExportTest failed");
               emailBadProblemTime("Math export didn't finish.");
             }
           });
@@ -2278,7 +2033,7 @@ function initializePolisHelpers() {
     getUserInfoForUid2(req.p.uid)
       .then((user: { email: any }) => {
         return doAddDataExportTask(
-          process.env.MATH_ENV,
+          Config.mathEnv,
           user.email,
           req.p.zid,
           req.p.unixTimestamp * 1000,
@@ -2302,7 +2057,7 @@ function initializePolisHelpers() {
   ) {
     var url = s3Client.getSignedUrl("getObject", {
       Bucket: "polis-datadump",
-      Key: process.env.MATH_ENV + "/" + req.p.filename,
+      Key: Config.mathEnv + "/" + req.p.filename,
       Expires: 60 * 60 * 24 * 7,
     });
     res.redirect(url);
@@ -2316,16 +2071,13 @@ function initializePolisHelpers() {
     math_tick = math_tick || -1;
     return pgQueryP_readOnly(
       "select * from math_bidtopid where zid = ($1) and math_env = ($2);",
-      [zid, process.env.MATH_ENV]
+      [zid, Config.mathEnv]
       //     Argument of type '(rows: string | any[]) => any' is not assignable to parameter of type '(value: unknown) => any'.
       // Types of parameters 'rows' and 'value' are incompatible.
       //   Type 'unknown' is not assignable to type 'string | any[]'.
       //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
       // @ts-ignore
     ).then((rows: string | any[]) => {
-      if (zid === 12480) {
-        console.log("bidToPid", rows[0].data);
-      }
       if (!rows || !rows.length) {
         // Could actually be a 404, would require more work to determine that.
         return new Error("polis_err_get_pca_results_missing");
@@ -2473,14 +2225,7 @@ function initializePolisHelpers() {
         let yourBid = indexToBid[yourBidi];
 
         if (yourBidi >= 0 && _.isUndefined(yourBid)) {
-          console.error(
-            "polis_err_math_index_mapping_mismatch",
-            "pid was",
-            pid,
-            "bidToPid was",
-            JSON.stringify(b2p)
-          );
-          yell("polis_err_math_index_mapping_mismatch");
+          logger.error("polis_err_math_index_mapping_mismatch", { pid, b2p });
           yourBid = -1;
         }
         return yourBid;
@@ -2543,14 +2288,7 @@ function initializePolisHelpers() {
           let yourBid = indexToBid[yourBidi];
 
           if (yourBidi >= 0 && _.isUndefined(yourBid)) {
-            console.error(
-              "polis_err_math_index_mapping_mismatch",
-              "pid was",
-              pid,
-              "bidToPid was",
-              JSON.stringify(b2p)
-            );
-            yell("polis_err_math_index_mapping_mismatch");
+            logger.error("polis_err_math_index_mapping_mismatch", { pid, b2p });
             yourBid = -1;
           }
 
@@ -2591,7 +2329,6 @@ function initializePolisHelpers() {
       // @ts-ignore
       function (err: any, userParams: { uid?: any }) {
         if (err) {
-          console.error(err);
           fail(
             res,
             500,
@@ -2614,20 +2351,17 @@ function initializePolisHelpers() {
                 res.status(200).json("Password reset successful.");
                 clearPwResetToken(pwresettoken, function (err: any) {
                   if (err) {
-                    yell(err);
-                    console.error("polis_err_auth_pwresettoken_clear_fail");
+                    logger.error("polis_err_auth_pwresettoken_clear_fail", err);
                   }
                 });
               },
               (err: any) => {
-                console.error(err);
                 fail(res, 500, "Couldn't reset password.", err);
               }
             );
           }
         );
-      }
-    );
+      });
   }
 
   const getServerNameWithProtocol = Config.getServerNameWithProtocol;
@@ -2666,8 +2400,7 @@ function initializePolisHelpers() {
             server,
             function (err: any) {
               if (err) {
-                console.error(err);
-                fail(res, 500, "Error: Couldn't send password reset email.");
+                fail(res, 500, "Error: Couldn't send password reset email.", err);
                 return;
               }
               finish();
@@ -2692,7 +2425,7 @@ If you need to create a new account, you can do that here ${server}/home
 Feel free to reply to this email if you need help.`;
 
     return sendTextEmail(
-      POLIS_FROM_ADDRESS,
+      polisFromAddress,
       email,
       "Password Reset Failed",
       body
@@ -2728,18 +2461,10 @@ Feel free to reply to this email if you need help.`;
     },
     cookieName: any
   ) {
-    let origin = req?.headers?.origin || "";
-    if (domainOverride || origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-      res?.clearCookie?.(cookieName, {
-        path: "/",
-      });
-    } else {
-      res?.clearCookie?.(cookieName, {
-        path: "/",
-        domain: ".pol.is",
-      });
-      //         res.clearCookie(cookieName, {path: "/", domain: "www.pol.is"});
-    }
+    res?.clearCookie?.(cookieName, {
+      path: "/",
+      domain: cookies.cookieDomain(req)
+    });
   }
 
   function clearCookies(
@@ -2755,39 +2480,19 @@ Feel free to reply to this email if you need help.`;
       set?: (arg0: { "Content-Type": string }) => void;
     }
   ) {
-    let origin = req?.headers?.origin || "";
     let cookieName;
-    if (domainOverride || origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-      for (cookieName in req.cookies) {
-        // Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.
-        // No index signature with a parameter of type 'string' was found on type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.ts(7053)
-        // @ts-ignore
-        if (COOKIES_TO_CLEAR[cookieName]) {
-          res?.clearCookie?.(cookieName, {
-            path: "/",
-          });
-        }
+    for (cookieName in req.cookies) {
+      // Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.
+      // No index signature with a parameter of type 'string' was found on type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.ts(7053)
+      // @ts-ignore
+      if (COOKIES_TO_CLEAR[cookieName]) {
+        res?.clearCookie?.(cookieName, {
+          path: "/",
+          domain: cookies.cookieDomain(req),
+        });
       }
-    } else {
-      for (cookieName in req.cookies) {
-        // Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.
-        // No index signature with a parameter of type 'string' was found on type '{ e: boolean; token2: boolean; uid2: boolean; uc: boolean; plan: boolean; referrer: boolean; parent_url: boolean; }'.ts(7053)
-        // @ts-ignore
-        if (COOKIES_TO_CLEAR[cookieName]) {
-          res?.clearCookie?.(cookieName, {
-            path: "/",
-            domain: ".pol.is",
-          });
-        }
-      }
-      // for (cookieName in req.cookies) {
-      //     if (COOKIES_TO_CLEAR[cookieName]) {
-      //         res.clearCookie(cookieName, {path: "/", domain: "www.pol.is"});
-      //     }
-      // }
     }
-    winston.log(
-      "info",
+    logger.info(
       "after clear res set-cookie: " +
         JSON.stringify(res?._headers?.["set-cookie"])
     );
@@ -2845,16 +2550,6 @@ Feel free to reply to this email if you need help.`;
     function finish() {
       if (!req.p.showPage) {
         res.status(200).end();
-      } else if (req.p.showPage === "canvas_assignment_deregister") {
-        res.set({
-          "Content-Type": "text/html",
-        });
-        let html = `<!DOCTYPE html><html lang='en'>
-<body>
-<h1>You are now signed out of pol.is</h1>
-<p>Please return to the 'setup pol.is' assignment to sign in as another user.</p>
-</body></html>`;
-        res.status(200).send(html);
       }
     }
     if (!token) {
@@ -3041,13 +2736,11 @@ Feel free to reply to this email if you need help.`;
             reject(new Error("polis_err_creating_otzinvite"));
             return;
           }
-          winston.log("info", longStringOfTokens);
           let otzinviteArrayRegexMatch = longStringOfTokens?.match(/.{1,31}/g);
           let otzinviteArray = otzinviteArrayRegexMatch?.slice(0, numTokens); // Base64 encoding expands to extra characters, so trim to the number of tokens we want.
           otzinviteArray = otzinviteArray?.map(function (suzinvite: string) {
             return generateConversationURLPrefix() + suzinvite;
           });
-          winston.log("info", otzinviteArray);
           resolve(otzinviteArray);
         }
       );
@@ -3358,7 +3051,7 @@ Feel free to reply to this email if you need help.`;
         function (err: any, results: any) {
           if (err) {
             // resolve, but complain
-            yell("polis_err_removing_suzinvite");
+            logger.error("polis_err_removing_suzinvite", err);
           }
           resolve();
         }
@@ -3390,7 +3083,7 @@ Feel free to reply to this email if you need help.`;
         [uid, owner, xid],
         function (err: any, results: any) {
           if (err) {
-            console.error(err);
+            logger.error("polis_err_adding_xid_entry", err);
             reject(new Error("polis_err_adding_xid_entry"));
             return;
           }
@@ -3440,7 +3133,7 @@ Feel free to reply to this email if you need help.`;
         qa_results: { [x: string]: { pmqid: any }; rows: any }
       ) {
         if (err) {
-          winston.log("info", "adsfasdfasd");
+          logger.error("polis_err_getting_participant_metadata_answers", err);
           return callback(err);
         }
 
@@ -3465,7 +3158,10 @@ Feel free to reply to this email if you need help.`;
               x,
               function (err: any, results: any) {
                 if (err) {
-                  winston.log("info", "sdkfuhsdu");
+                  logger.error(
+                    "polis_err_saving_participant_metadata_choices",
+                    err
+                  );
                   return cb(err);
                 }
                 cb(0);
@@ -3474,7 +3170,10 @@ Feel free to reply to this email if you need help.`;
           },
           function (err: any) {
             if (err) {
-              winston.log("info", "ifudshf78ds");
+              logger.error(
+                "polis_err_saving_participant_metadata_choices",
+                err
+              );
               return callback(err);
             }
             // finished with all the inserts
@@ -3547,7 +3246,6 @@ Feel free to reply to this email if you need help.`;
     uid?: any,
     pid?: any
   ) {
-    INFO("asdf1", zid, uid, pid);
     getUsersLocationName(uid)
       //     No overload matches this call.
       // Overload 1 of 2, '(onFulfill?: ((value: unknown) => Resolvable<void>) | undefined, onReject?: ((error: any) => Resolvable<void>) | undefined): Bluebird<void>', gave the following error.
@@ -3561,10 +3259,8 @@ Feel free to reply to this email if you need help.`;
       // @ts-ignore
       .then(function (locationData: { location: any; source: any }) {
         if (!locationData) {
-          INFO("asdf1.nope");
           return;
         }
-        INFO(locationData);
         geoCode(locationData.location)
           //         Argument of type '(o: { lat: any; lng: any; }) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.
           // Types of parameters 'o' and 'value' are incompatible.
@@ -3580,19 +3276,19 @@ Feel free to reply to this email if you need help.`;
               locationData.source
             ).catch(function (err: any) {
               if (!isDuplicateKey(err)) {
-                yell("polis_err_creating_particpant_location_record");
-                console.error(err);
+                logger.error(
+                  "polis_err_creating_particpant_location_record",
+                  err
+                );
               }
             });
           })
           .catch(function (err: any) {
-            yell("polis_err_geocoding_01");
-            console.error(err);
+            logger.error("polis_err_geocoding", err);
           });
       })
       .catch(function (err: any) {
-        yell("polis_err_fetching_user_location_name");
-        console.error(err);
+        logger.error("polis_err_fetching_user_location_name", err);
       });
   }
 
@@ -3603,8 +3299,8 @@ Feel free to reply to this email if you need help.`;
     );
   }
   function populateGeoIpInfo(zid: any, uid?: any, ipAddress?: string | null) {
-    var userId = process.env.MAXMIND_USERID;
-    var licenseKey = process.env.MAXMIND_LICENSEKEY;
+    var userId = Config.maxmindUserID;
+    var licenseKey = Config.maxmindLicenseKey;
 
     var url = "https://geoip.maxmind.com/geoip/v2.1/city/";
     var contentType =
@@ -3641,9 +3337,7 @@ Feel free to reply to this email if you need help.`;
       })
       .then(function (response: string) {
         var parsedResponse = JSON.parse(response);
-        console.log("BEGIN MAXMIND RESPONSE");
-        console.log(response);
-        console.log("END MAXMIND RESPONSE");
+        logger.debug("maxmind response", parsedResponse);
 
         return pgQueryP(
           "update participants_extended set modified=now_as_millis(), country_iso_code=($4), encrypted_maxmind_response_city=($3), " +
@@ -3689,9 +3383,6 @@ Feel free to reply to this email if you need help.`;
     info?: any,
     pmaid_answers?: string | any[]
   ) {
-    console.log("tryToJoinConversation");
-    console.dir(arguments);
-
     function doAddExtendedParticipantInfo() {
       if (info && _.keys(info).length > 0) {
         addExtendedParticipantInfo(zid, uid, info);
@@ -3742,7 +3433,6 @@ Feel free to reply to this email if you need help.`;
     if (parent_url) {
       info.parent_url = parent_url;
     }
-    console.log("mike foo");
     if (referer) {
       info.referrer = referer;
     }
@@ -3755,7 +3445,6 @@ Feel free to reply to this email if you need help.`;
     //   ip = ips.length && ips[0];
     //   info.encrypted_ip_address = encrypt(ip);
     //   info.encrypted_x_forwarded_for = encrypt(x_forwarded_for);
-    //   console.log("mike encrypt");
     // }
     if (permanent_cookie) {
       info.permanent_cookie = permanent_cookie;
@@ -3865,10 +3554,7 @@ Feel free to reply to this email if you need help.`;
   }
 
   function isOwner(zid: any, uid: string) {
-    return getConversationInfo(zid).then(function (info: { owner: any }) {
-      winston.log("info", 39847534987 + " isOwner " + uid);
-      winston.log("info", info);
-      winston.log("info", info.owner === uid);
+    return getConversationInfo(zid).then(function (info: any) {
       return info.owner === uid;
     });
   }
@@ -3964,28 +3650,26 @@ Feel free to reply to this email if you need help.`;
 ${message}`;
 
     return sendMultipleTextEmails(
-      POLIS_FROM_ADDRESS,
-      admin_emails,
+      polisFromAddress,
+      adminEmails,
       "Dummy button clicked!!!",
       body
     ).catch(function (err: any) {
-      yell("polis_err_failed_to_email_for_dummy_button");
-      yell(message);
+      logger.error("polis_err_failed_to_email_for_dummy_button", {
+        message,
+        err,
+      });
     });
   }
 
   function emailTeam(subject: string, body: string) {
     return sendMultipleTextEmails(
-      POLIS_FROM_ADDRESS,
-      admin_emails,
+      polisFromAddress,
+      adminEmails,
       subject,
       body
     ).catch(function (err: any) {
-      yell("polis_err_failed_to_email_team");
-      // Cannot find name 'message'. Did you mean 'onmessage'?ts(2552)
-      //     lib.dom.d.ts(20013, 13): 'onmessage' is declared here.
-      // @ts-ignore
-      yell(message);
+      logger.error("polis_err_failed_to_email_team", err);
     });
   }
 
@@ -4025,24 +3709,21 @@ ${serverName}/pwreset/${pwresettoken}
 "Thank you for using Polis`;
 
         sendTextEmail(
-          POLIS_FROM_ADDRESS,
+          polisFromAddress,
           userInfo.email,
           "Polis Password Reset",
           body
-        )
-          .then(function () {
-            callback?.();
-          })
-          .catch(function (err: any) {
-            yell("polis_err_failed_to_email_password_reset_code");
-            callback?.(err);
-          });
+        ).then(function () {
+          callback?.();
+        }).catch(function (err: any) {
+          logger.error("polis_err_failed_to_email_password_reset_code", err);
+          callback?.(err);
+        });
       }
     );
   }
 
   // function sendTextEmailWithPostmark(sender, recipient, subject, text) {
-  //   winston.log("info", "sending email with postmark: " + [sender, recipient, subject, text].join(" "));
   //   return new Promise(function(resolve, reject) {
   //     postmark.send({
   //       "From": sender,
@@ -4051,11 +3732,9 @@ ${serverName}/pwreset/${pwresettoken}
   //       "TextBody": text,
   //     }, function(error, success) {
   //       if (error) {
-  //         console.error("Unable to send email via postmark to " + recipient + " " + error.message);
   //         yell("polis_err_postmark_email_send_failed");
   //         reject(error);
   //       } else {
-  //         winston.log("info", "sent email with postmark to " + recipient);
   //         resolve();
   //       }
   //     });
@@ -4072,7 +3751,7 @@ ${serverName}/pwreset/${pwresettoken}
       recipientArray.map(function (email: string) {
         let promise = sendTextEmail(sender, email, subject, text);
         promise.catch(function (err: any) {
-          yell("polis_err_failed_to_email_for_user " + email);
+          logger.error("polis_err_failed_to_email_for_user", { email, err });
         });
         return promise;
       })
@@ -4088,8 +3767,8 @@ ${serverName}/pwreset/${pwresettoken}
       // send the monday backup email system test
       // If the sending fails, we should get an error ping.
       sendTextEmailWithBackupOnly(
-        POLIS_FROM_ADDRESS,
-        adminEmailEmailTest,
+        polisFromAddress,
+        Config.adminEmailEmailTest,
         "monday backup email system test",
         "seems to be working"
       );
@@ -4108,7 +3787,7 @@ ${serverName}/welcome/${einvite}
 Thank you for using Polis`;
 
     return sendTextEmail(
-      POLIS_FROM_ADDRESS,
+      polisFromAddress,
       email,
       "Get Started with Polis",
       body
@@ -4233,7 +3912,7 @@ Email verified! You can close this tab or hit the back button.
       let correctHash = createHmacForQueryParams(path, params);
       // To thwart timing attacks, add some randomness to the response time with setTimeout.
       setTimeout(function () {
-        winston.log("info", "comparing", correctHash, hash);
+        logger.debug("comparing", { correctHash, hash });
         if (correctHash === hash) {
           resolve();
         } else {
@@ -4249,7 +3928,7 @@ Email verified! You can close this tab or hit the back button.
       email: any;
     }) {
       return sendTextEmail(
-        POLIS_FROM_ADDRESS,
+        polisFromAddress,
         userInfo.hname
           ? `${userInfo.hname} <${userInfo.email}>`
           : userInfo.email,
@@ -4463,7 +4142,7 @@ Email verified! You can close this tab or hit the back button.
           );
         },
         function (err: { message: any }) {
-          userFail(res, 400, err.message, err);
+          fail(res, 400, err.message, err);
         }
       );
     }
@@ -4486,46 +4165,8 @@ Email verified! You can close this tab or hit the back button.
           }
 
           getConversationInfo(zid)
-            .then(function (conv: { lti_users_only: any }) {
-              if (conv.lti_users_only) {
-                if (uid) {
-                  pgQueryP("select * from lti_users where uid = ($1)", [uid])
-                    // Argument of type '(rows: string | any[]) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.
-                    // Types of parameters 'rows' and 'value' are incompatible.
-                    //   Type 'unknown' is not assignable to type 'string | any[]'.
-                    //    Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-                    // @ts-ignore
-                    .then(function (rows: string | any[]) {
-                      if (rows && rows.length) {
-                        // found a record in lti_users
-                        doJoin();
-                      } else {
-                        userFail(
-                          res,
-                          403,
-                          "polis_err_post_participants_missing_lti_user_for_uid_1"
-                        );
-                      }
-                    })
-                    .catch(function (err: any) {
-                      fail(
-                        res,
-                        500,
-                        "polis_err_post_participants_missing_lti_user_for_uid_2",
-                        err
-                      );
-                    });
-                } else {
-                  userFail(
-                    res,
-                    403,
-                    "polis_err_post_participants_need_uid_to_check_lti_users_3"
-                  );
-                }
-              } else {
-                // no LTI stuff to worry about
-                doJoin();
-              }
+            .then(function () {
+              doJoin();
             })
             .catch(function (err: any) {
               fail(
@@ -4545,12 +4186,9 @@ Email verified! You can close this tab or hit the back button.
       });
   }
 
-  const addLtiUserIfNeeded = User.addLtiUserIfNeeded;
-  const addLtiContextMembership = User.addLtiContextMembership;
-
   function subscribeToNotifications(zid: any, uid?: any, email?: any) {
     let type = 1; // 1 for email
-    winston.log("info", "subscribeToNotifications", zid, uid);
+    logger.info("subscribeToNotifications", { zid, uid });
     return pgQueryP(
       "update participants_extended set subscribe_email = ($3) where zid = ($1) and uid = ($2);",
       [zid, uid, email]
@@ -4685,7 +4323,6 @@ Email verified! You can close this tab or hit the back button.
 
                   // if (needs && result.remaining < 5) {
                   //   // no need to try again for this user since new comments will create new tasks
-                  //   console.log('doNotificationsForZid', 'not enough remaining');
                   //   needs = false;
                   // }
 
@@ -4706,17 +4343,11 @@ Email verified! You can close this tab or hit the back button.
                     waitTime = 48 * 60 * 60 * 1000; // 48 hours
                   } else {
                     // give up, if they vote again nsli will be set to zero again.
-                    console.log("doNotificationsForZid", "nsli");
                     needs = false;
                   }
 
                   if (needs && dbTimeMillis < ptpt.last_notified + waitTime) {
                     // Limit to one per hour.
-                    console.log(
-                      "doNotificationsForZid",
-                      "shouldTryAgain",
-                      "last_notified"
-                    );
                     shouldTryAgain = true;
                     needs = false;
                   }
@@ -4725,11 +4356,6 @@ Email verified! You can close this tab or hit the back button.
                     dbTimeMillis < ptpt.last_interaction + 5 * 60 * 1000
                   ) {
                     // Wait until 5 minutes after their last interaction.
-                    console.log(
-                      "doNotificationsForZid",
-                      "shouldTryAgain",
-                      "last_interaction"
-                    );
                     shouldTryAgain = true;
                     needs = false;
                   }
@@ -4814,15 +4440,8 @@ Email verified! You can close this tab or hit the back button.
         if (!task) {
           return Promise.resolve();
         }
-        console.log("doNotificationsForZid", task.zid);
         return doNotificationsForZid(task.zid, task.modified).then(
           (shouldTryAgain: any) => {
-            console.log(
-              "doNotificationsForZid",
-              task.zid,
-              "shouldTryAgain",
-              shouldTryAgain
-            );
             if (shouldTryAgain) {
               // Since we claimed the task above, there will be no record, so we need to
               // put it back to trigger a retry - unless there's a new one there, in which case we should
@@ -4836,7 +4455,7 @@ Email verified! You can close this tab or hit the back button.
   }
 
   function doNotificationLoop() {
-    console.log("doNotificationLoop");
+    logger.debug("doNotificationLoop");
     doNotificationBatch().then(() => {
       setTimeout(doNotificationLoop, 10000);
     });
@@ -4883,10 +4502,7 @@ Email verified! You can close this tab or hit the back button.
     // @ts-ignore
     params[HMAC_SIGNATURE_PARAM_NAME] = createHmacForQueryParams(path, params);
 
-    let server = "http://localhost:5000";
-    if (!devMode) {
-      server = "https://" + process.env.PRIMARY_POLIS_URL;
-    }
+    let server = Config.getServerUrl();
     return server + "/" + path + "?" + paramsToStringSortedByName(params);
   }
 
@@ -4901,10 +4517,7 @@ Email verified! You can close this tab or hit the back button.
     // @ts-ignore
     params[HMAC_SIGNATURE_PARAM_NAME] = createHmacForQueryParams(path, params);
 
-    let server = "http://localhost:5000";
-    if (!devMode) {
-      server = "https://" + process.env.PRIMARY_POLIS_URL;
-    }
+    let server = Config.getServerUrl();
     return server + "/" + path + "?" + paramsToStringSortedByName(params);
   }
 
@@ -5051,10 +4664,6 @@ Email verified! You can close this tab or hit the back button.
       p: {
         password: any;
         email: string;
-        lti_user_id: any;
-        lti_user_image: any;
-        lti_context_id: any;
-        tool_consumer_instance_guid?: any;
         afterJoinRedirectUrl: any;
       };
     },
@@ -5065,10 +4674,6 @@ Email verified! You can close this tab or hit the back button.
   ) {
     let password = req.p.password;
     let email = req.p.email || "";
-    let lti_user_id = req.p.lti_user_id;
-    let lti_user_image = req.p.lti_user_image;
-    let lti_context_id = req.p.lti_context_id;
-    let tool_consumer_instance_guid = req.p.tool_consumer_instance_guid;
     let afterJoinRedirectUrl = req.p.afterJoinRedirectUrl;
 
     email = email.toLowerCase();
@@ -5083,12 +4688,10 @@ Email verified! You can close this tab or hit the back button.
         const { rows } = docs;
         if (err) {
           fail(res, 403, "polis_err_login_unknown_user_or_password", err);
-          console.error("polis_err_login_unknown_user_or_password_err");
           return;
         }
         if (!rows || rows.length === 0) {
           fail(res, 403, "polis_err_login_unknown_user_or_password_noresults");
-          console.error("polis_err_login_unknown_user_or_password_noresults");
           return;
         }
 
@@ -5102,14 +4705,10 @@ Email verified! You can close this tab or hit the back button.
             const { rows } = results;
             if (err) {
               fail(res, 403, "polis_err_login_unknown_user_or_password", err);
-              console.error("polis_err_login_unknown_user_or_password_err");
               return;
             }
             if (!results || rows.length === 0) {
               fail(res, 403, "polis_err_login_unknown_user_or_password");
-              console.error(
-                "polis_err_login_unknown_user_or_password_noresults"
-              );
               return;
             }
 
@@ -5119,12 +4718,9 @@ Email verified! You can close this tab or hit the back button.
               password,
               hashedPassword,
               function (errCompare: any, result: any) {
-                winston.log("info", "errCompare, result", errCompare, result);
+                logger.debug("errCompare, result", { errCompare, result });
                 if (errCompare || !result) {
                   fail(res, 403, "polis_err_login_unknown_user_or_password");
-                  console.error(
-                    "polis_err_login_unknown_user_or_password_badpassword"
-                  );
                   return;
                 }
 
@@ -5141,60 +4737,9 @@ Email verified! You can close this tab or hit the back button.
                   // lti_user_image: any; lti_context_id: any; tool_consumer_instance_guid?: any; afterJoinRedirectUrl: any; }; }' but required in type
                   // '{ cookies: { [x: string]: any; }; }'.ts(2345)
                   // @ts-ignore
-                  addCookies(req, res, token, uid)
-                    .then(function () {
-                      winston.log("info", "uid", uid);
-                      winston.log("info", "lti_user_id", lti_user_id);
-                      winston.log("info", "lti_context_id", lti_context_id);
-                      let ltiUserPromise = lti_user_id
-                        ? addLtiUserIfNeeded(
-                            uid,
-                            lti_user_id,
-                            tool_consumer_instance_guid,
-                            lti_user_image
-                          )
-                        : Promise.resolve();
-                      let ltiContextMembershipPromise = lti_context_id
-                        ? addLtiContextMembership(
-                            uid,
-                            lti_context_id,
-                            tool_consumer_instance_guid
-                          )
-                        : Promise.resolve();
-                      Promise.all([ltiUserPromise, ltiContextMembershipPromise])
-                        .then(function () {
-                          if (lti_user_id) {
-                            if (afterJoinRedirectUrl) {
-                              res.redirect(afterJoinRedirectUrl);
-                            } else {
-                              // Argument of type '{ redirect: (arg0: any) => void; json: (arg0: { uid?: any; email: any; token: any; }) => void; }'
-                              // is not assignable to parameter of type '{ set: (arg0: { "Content-Type": string; }) => void; status:
-                              // (arg0: number) => { (): any; new (): any; send: { (arg0: string): void; new (): any; }; }; }'.
-                              // Type '{ redirect: (arg0: any) => void; json: (arg0: { uid?: any; email: any; token: any; }) => void; }'
-                              // is missing the following properties from type '{ set: (arg0: { "Content-Type": string; }) => void;
-                              // status: (arg0: number) => { (): any; new (): any; send: { (arg0: string): void; new (): any; }; }; }': set, statusts(2345)
-                              // @ts-ignore
-                              User.renderLtiLinkageSuccessPage(req, res, {
-                                // may include token here too
-                                context_id: lti_context_id,
-                                uid: uid,
-                                // hname: hname,
-                                email: email,
-                              });
-                            }
-                          } else {
-                            res.json(response_data);
-                          }
-                        })
-                        .catch(function (err: any) {
-                          fail(
-                            res,
-                            500,
-                            "polis_err_adding_associating_with_lti_user",
-                            err
-                          );
-                        });
-                    })
+                  addCookies(req, res, token, uid).then(function () {
+                    res.json(response_data);
+                  })
                     .catch(function (err: any) {
                       fail(res, 500, "polis_err_adding_cookies", err);
                     });
@@ -5265,8 +4810,7 @@ Email verified! You can close this tab or hit the back button.
         // @ts-ignore
         .then(function (o: { uid?: any; existingAuth: string }) {
           let uid = o.uid;
-          winston.log(
-            "info",
+          logger.info(
             "startSessionAndAddCookies " + uid + " existing " + o.existingAuth
           );
           // TODO check for possible security implications
@@ -5292,7 +4836,7 @@ Email verified! You can close this tab or hit the back button.
         //     Type 'unknown' is not assignable to type '{ permanentCookieToken: any; zid: any; }'.ts(2769)
         // @ts-ignore
         .then(function (o: { permanentCookieToken: any; zid: any }) {
-          winston.log("info", "permanentCookieToken", o.permanentCookieToken);
+          logger.info("permanentCookieToken", o.permanentCookieToken);
           if (o.permanentCookieToken) {
             return recordPermanentCookieZidJoin(
               o.permanentCookieToken,
@@ -5332,7 +4876,7 @@ Email verified! You can close this tab or hit the back button.
             err.message &&
             err.message.match(/polis_err_need_full_user/)
           ) {
-            userFail(res, 403, err.message, err);
+            fail(res, 403, err.message, err);
           } else if (err && err.message) {
             fail(res, 500, err.message, err);
           } else if (err) {
@@ -5346,17 +4890,13 @@ Email verified! You can close this tab or hit the back button.
   // Test for deadlock condition
   // _.times(2, function() {
   // setInterval(function() {
-  //         winston.log("info","foobar test call begin");
   //         joinWithZidOrSuzinvite({
   //             answers: [],
   //             existingAuth: false,
   //             zid: 11580,
   //             // uid: req.p.uid,
   //         }).then(function() {
-  //             winston.log("info",'foobar test ok');
   //         }).catch(function(err) {
-  //             winston.log("info",'foobar test failed');
-  //             winston.log("info",err);
   //         });
 
   // }, 10);
@@ -5387,37 +4927,15 @@ Email verified! You can close this tab or hit the back button.
           }
         })
         .then(function (o: { zid: any; conv: any }) {
-          winston.log("info", "joinWithZidOrSuzinvite convinfo begin");
+          logger.info("joinWithZidOrSuzinvite convinfo begin");
           return getConversationInfo(o.zid).then(function (conv: any) {
-            winston.log("info", "joinWithZidOrSuzinvite convinfo done");
+            logger.info("joinWithZidOrSuzinvite convinfo done");
             o.conv = conv;
             return o;
           });
         })
-        .then(function (o: { lti_users_only: any; uid?: any }) {
-          if (o.lti_users_only) {
-            if (o.uid) {
-              return pgQueryP("select * from lti_users where uid = ($1)", [
-                o.uid,
-                //               Argument of type '(rows: string | any[]) => { lti_users_only: any; uid?: any; }' is not assignable to parameter of type
-                // '(value: unknown) => { lti_users_only: any; uid?: any; } | PromiseLike<{ lti_users_only: any; uid?: any; }>'.
-                // Types of parameters 'rows' and 'value' are incompatible.
-                //   Type 'unknown' is not assignable to type 'string | any[]'.
-                //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-                // @ts-ignore
-              ]).then(function (rows: string | any[]) {
-                if (rows && rows.length) {
-                  return o;
-                } else {
-                  throw new Error("polis_err_missing_lti_user_for_uid");
-                }
-              });
-            } else {
-              throw new Error("polis_err_need_uid_to_check_lti_users");
-            }
-          } else {
-            return o;
-          }
+        .then(function (o: any) {
+          return o;
         })
         //       No overload matches this call.
         // Overload 1 of 2, '(onFulfill?: ((value: unknown) => any) | undefined, onReject?: ((error: any) => any) | undefined): Bluebird<any>', gave the following error.
@@ -5430,20 +4948,20 @@ Email verified! You can close this tab or hit the back button.
         //     Type 'unknown' is not assignable to type '{ uid?: any; user: any; }'.ts(2769)
         // @ts-ignore
         .then(function (o: { uid?: any; user: any }) {
-          winston.log("info", "joinWithZidOrSuzinvite userinfo begin");
+          logger.info("joinWithZidOrSuzinvite userinfo begin");
           if (!o.uid) {
-            winston.log("info", "joinWithZidOrSuzinvite userinfo nope");
+            logger.info("joinWithZidOrSuzinvite userinfo no uid");
             return o;
           }
           return getUserInfoForUid2(o.uid).then(function (user: any) {
-            winston.log("info", "joinWithZidOrSuzinvite userinfo done");
+            logger.info("joinWithZidOrSuzinvite userinfo done");
             o.user = user;
             return o;
           });
         })
         // Commenting out for now until we have proper workflow for user.
         // .then(function(o) {
-        //   winston.log("info","joinWithZidOrSuzinvite check email");
+        //   logger.info("joinWithZidOrSuzinvite check email");
         // if (o.conv.owner_sees_participation_stats) {
         //   // User stats can be provided either by having the users sign in with polis
         //   // or by having them join via suurls.
@@ -5455,7 +4973,6 @@ Email verified! You can close this tab or hit the back button.
         // })
         // @ts-ignore
         .then(function (o: { uid?: any }) {
-          // winston.log("info","joinWithZidOrSuzinvite check email done");
           if (o.uid) {
             return o;
           } else {
@@ -5620,14 +5137,7 @@ Email verified! You can close this tab or hit the back button.
       response: any;
     }
   ) {
-    winston.log("info", "createFacebookUserRecord");
-    winston.log("info", "createFacebookUserRecord", JSON.stringify(o));
-    winston.log("info", o);
-    winston.log("info", "end createFacebookUserRecord");
     let profileInfo = o.fb_public_profile;
-    winston.log("info", "createFacebookUserRecord profileInfo");
-    winston.log("info", profileInfo);
-    winston.log("info", "end createFacebookUserRecord profileInfo");
     // Create facebook user record
     return pgQueryP(
       "insert into facebook_users (uid, fb_user_id, fb_name, fb_link, fb_public_profile, fb_login_status, fb_access_token, fb_granted_scopes, fb_location_id, location, fb_friends_response, response) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);",
@@ -5757,17 +5267,17 @@ Email verified! You can close this tab or hit the back button.
       //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
       // @ts-ignore
     ).then(function (rows: string | any[]) {
-      console.log("isParentDomainWhitelisted", domain, zid, isWithinIframe);
+      logger.debug("isParentDomainWhitelisted", { domain, zid, isWithinIframe });
       if (!rows || !rows.length || !rows[0].domain_whitelist.length) {
         // there is no whitelist, so any domain is ok.
-        console.log("isParentDomainWhitelisted", "no whitelist");
+        logger.debug("isParentDomainWhitelisted : no whitelist");
         return true;
       }
       let whitelist = rows[0].domain_whitelist;
       let wdomains = whitelist.split(",");
       if (!isWithinIframe && wdomains.indexOf("*.pol.is") >= 0) {
         // if pol.is is in the whitelist, then it's ok to show the conversation outside of an iframe.
-        console.log("isParentDomainWhitelisted", "*.pol.is");
+        logger.debug("isParentDomainWhitelisted : *.pol.is");
         return true;
       }
       if (
@@ -5777,7 +5287,6 @@ Email verified! You can close this tab or hit the back button.
         return true;
       }
       let ok = false;
-      console.log("isParentDomainWhitelisted", 1);
       for (var i = 0; i < wdomains.length; i++) {
         let w = wdomains[i];
         let wParts = w.split(".");
@@ -5785,7 +5294,6 @@ Email verified! You can close this tab or hit the back button.
         // example: domain might be blogs.nytimes.com, and whitelist entry might be *.nytimes.com, and that should be a match
         let parts = domain.split(".");
 
-        console.log("isParentDomainWhitelisted", 2, wParts, parts);
         if (wParts.length && wParts[0] === "*") {
           // wild card case
           // check for a match on each part following the '*'
@@ -5793,12 +5301,9 @@ Email verified! You can close this tab or hit the back button.
 
           wParts = wParts.reverse();
           parts = parts.reverse();
-          console.log("isParentDomainWhitelisted", 3, parts, wParts);
           for (var p = 0; p < wParts.length - 1; p++) {
-            console.log("isParentDomainWhitelisted", 33, parts[p], wParts[p]);
             if (wParts[p] !== parts[p]) {
               bad = true;
-              console.log("isParentDomainWhitelisted", 4);
               break;
             }
           }
@@ -5806,18 +5311,13 @@ Email verified! You can close this tab or hit the back button.
         } else {
           // no wild card
           let bad2 = false;
-          console.log("isParentDomainWhitelisted", 5);
           if (wParts.length !== parts.length) {
-            console.log("isParentDomainWhitelisted", 6);
             bad2 = true;
           }
-          console.log("isParentDomainWhitelisted", 61, parts, wParts);
           // check for a match on each part
           for (var p2 = 0; p2 < wParts.length; p2++) {
-            console.log("isParentDomainWhitelisted", 66, parts[p2], wParts[p2]);
             if (wParts[p2] !== parts[p2]) {
               bad2 = true;
-              console.log("isParentDomainWhitelisted", 7);
               break;
             }
           }
@@ -5828,7 +5328,7 @@ Email verified! You can close this tab or hit the back button.
           break;
         }
       }
-      console.log("isParentDomainWhitelisted", 8, ok);
+      logger.debug("isParentDomainWhitelisted : " + ok);
       return ok;
     });
   }
@@ -5884,7 +5384,7 @@ Email verified! You can close this tab or hit the back button.
         }
       })
       .catch(function (err: any) {
-        console.error(err);
+        logger.error("error in isParentDomainWhitelisted", err);
         res.send(403, "polis_err_domain");
         next("polis_err_domain_misc");
       });
@@ -6189,10 +5689,8 @@ Email verified! You can close this tab or hit the back button.
           fail(res, 500, "polis_err_cloning_conversation", err);
           return;
         }
-        // winston.log("info",rows);
         let conv = result.rows[0];
 
-        // let conv = rows[0];
         let newZid = conv.zid;
         return pgQueryP(
           "insert into participants (pid, zid, uid, created, mod, subscribed) " +
@@ -6352,8 +5850,6 @@ Email verified! You can close this tab or hit the back button.
           "\n\n" +
           req.p.response
       );
-      console.log(req.p.response);
-      console.log(JSON.stringify(req.headers));
       fail(res, 500, "polis_err_missing_fb_access_token");
       return;
     }
@@ -6459,9 +5955,6 @@ Email verified! You can close this tab or hit the back button.
     let password = req.p.password;
     let uid = req.p.uid;
 
-    console.log("fb_data"); // TODO_REMOVE
-    console.dir(o); // TODO_REMOVE
-
     let fbUserRecord = {
       // uid provided later
       fb_user_id: fb_user_id,
@@ -6536,7 +6029,8 @@ Email verified! You can close this tab or hit the back button.
             fail(
               res,
               500,
-              "polis_err_reg_fb_user_exists_with_different_account"
+              "polis_err_reg_fb_user_exists_with_different_account",
+              err
             );
           }
         );
@@ -6626,7 +6120,7 @@ Email verified! You can close this tab or hit the back button.
             }
           },
           function (err: any) {
-            fail(res, 500, "polis_err_password_check");
+            fail(res, 500, "polis_err_password_check", err);
           }
         );
       }
@@ -6635,7 +6129,6 @@ Email verified! You can close this tab or hit the back button.
     function doFbNoUserExistsYet(user: any) {
       let promise;
       if (uid) {
-        winston.log("info", "fb1 5a...");
         // user record already exists, so populate that in case it has missing info
         promise = Promise.all([
           pgQueryP("select * from users where uid = ($1);", [uid]),
@@ -6660,14 +6153,9 @@ Email verified! You can close this tab or hit the back button.
           // @ts-ignore
         ]).then(function (o: any[][]) {
           let user = o[0][0];
-          winston.log("info", "fb1 5a");
-          winston.log("info", user);
-          winston.log("info", "end fb1 5a");
           return user;
         });
-        winston.log("info", "fb1 5a....");
       } else {
-        winston.log("info", "fb1 5b...");
         let query =
           "insert into users " +
           "(email, hname) VALUES " +
@@ -6682,18 +6170,12 @@ Email verified! You can close this tab or hit the back button.
           rows: string | any[]
         ) {
           let user = (rows && rows.length && rows[0]) || null;
-          winston.log("info", "fb1 5b");
-          winston.log("info", user);
-          winston.log("info", "end fb1 5b");
           return user;
         });
       }
       // Create user record
       promise
         .then(function (user: any) {
-          winston.log("info", "fb1 4");
-          winston.log("info", user);
-          winston.log("info", "end fb1 4");
           return createFacebookUserRecord(
             Object.assign({}, user, fbUserRecord)
           ).then(function () {
@@ -6702,9 +6184,6 @@ Email verified! You can close this tab or hit the back button.
         })
         .then(
           function (user: { uid?: any }) {
-            winston.log("info", "fb1 3");
-            winston.log("info", user);
-            winston.log("info", "end fb1 3");
             if (fb_friends_response) {
               return addFacebookFriends(user.uid, fb_friends_response).then(
                 function () {
@@ -6727,9 +6206,6 @@ Email verified! You can close this tab or hit the back button.
           //         Type 'void' is not assignable to type '{ uid?: any; }'.ts(2345)
           // @ts-ignore
           function (user: { uid?: any }) {
-            winston.log("info", "fb1 2");
-            winston.log("info", user);
-            winston.log("info", "end fb1 2");
             let uid = user.uid;
             return startSessionAndAddCookies(req, res, uid).then(
               function () {
@@ -6751,9 +6227,6 @@ Email verified! You can close this tab or hit the back button.
           //         Type 'void' is not assignable to type '{ uid?: any; hname: any; email: any; }'.ts(2345)
           // @ts-ignore
           function (user: { uid?: any; hname: any; email: any }) {
-            winston.log("info", "fb1");
-            winston.log("info", user);
-            winston.log("info", "end fb1");
             res.json({
               uid: user.uid,
               hname: user.hname,
@@ -6891,464 +6364,11 @@ Email verified! You can close this tab or hit the back button.
   }
 
   const getUser = User.getUser;
-
-  // These map from non-ui string codes to number codes used in the DB
-  var planCodes = {
-    mike: 9999,
-    trial: 0,
-    free: 0,
-    individuals: 1,
-    students: 2,
-    pp: 3,
-    sites: 100,
-    org99: 99,
-    pro: 300,
-    organizations: 1000,
-  };
-
-  // // These are for customer to see in UI
-  // var planCodeToPlanName = {
-  //   9999: "MikePlan",
-  //   0: "Trial",
-  //   1: "Individual",
-  //   2: "Student",
-  //   3: "Participants Pay",
-  //   100: "Site",
-  //   1000: "Organization",
-  // };
-  function changePlan(uid?: any, planCode?: any) {
-    return new Promise(function (
-      resolve: () => void,
-      reject: (arg0: any) => void
-    ) {
-      pgQuery(
-        "update users set plan = ($1) where uid = ($2);",
-        [planCode, uid],
-        function (err: any, results: any) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        }
-      );
-    });
-  }
-
-  function createStripeUser(o: {
-    card: any;
-    description: any;
-    email: any;
-    metadata: { uid?: any; polisEmail: any };
-  }) {
-    return new Promise(function (
-      resolve: (arg0: any) => void,
-      reject: (arg0: any) => void
-    ) {
-      stripe.customers.create(o, function (err: any, customer: any) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(customer);
-        }
-      });
-    });
-  }
-
-  function getStripeUser(customerId: any) {
-    return new Promise(function (
-      resolve: (arg0: any) => void,
-      reject: (arg0: any) => void
-    ) {
-      stripe.customers.retrieve(customerId, function (err: any, customer: any) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(customer);
-        }
-      });
-    });
-  }
-
-  function createStripeSubscription(customerId: any, planId: any) {
-    return new Promise(function (
-      resolve: (arg0: any) => void,
-      reject: (arg0: any) => void
-    ) {
-      stripe.customers.createSubscription(
-        customerId,
-        {
-          plan: planId,
-        },
-        function (err: any, subscription: any) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(subscription);
-          }
-        }
-      );
-    });
-  }
-
-  function updateStripePlan(
-    user: UserType,
-    stripeToken: any,
-    stripeEmail: any,
-    plan: any
-  ) {
-    var customerPromise = user.stripeCustomerId
-      ? getStripeUser(user.stripeCustomerId)
-      : createStripeUser({
-          card: stripeToken,
-          description: user.hname,
-          email: stripeEmail,
-          metadata: {
-            uid: user.uid,
-            polisEmail: user.email,
-          },
-        });
-
-    return customerPromise.then(function (customer: { id: any }) {
-      // throw new Error("TODO"); // TODO is "plan" the right identifier?
-
-      // TODO may need to wrangle existing plans..
-
-      return createStripeSubscription(customer.id, plan).then(function (
-        data: any
-      ) {
-        return pgQueryP(
-          "insert into stripe_subscriptions (uid, stripe_subscription_data) values ($1, $2) " +
-            "on conflict  (uid) do update set stripe_subscription_data = ($2), modified = now_as_millis();",
-          [user.uid, data]
-        );
-      });
-    });
-  }
-
-  function handle_GET_createPlanChangeCoupon(
-    req: { p: { uid?: any; planCode: any } },
-    res: {
-      status: (
-        arg0: number
-      ) => { (): any; new (): any; json: { (arg0: any): void; new (): any } };
-    }
-  ) {
-    var uid = req.p.uid;
-    var planCode = req.p.planCode;
-    generateTokenP(30, false)
-      .then(function (code: any) {
-        return (
-          pgQueryP(
-            "insert into coupons_for_free_upgrades (uid, code, plan) values ($1, $2, $3) returning *;",
-            [uid, code, planCode]
-          )
-            //       Argument of type '(rows: any[]) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.
-            // Types of parameters 'rows' and 'value' are incompatible.
-            //         Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-            // @ts-ignore
-            .then(function (rows: any[]) {
-              var row = rows[0];
-              row.url =
-                "https://pol.is/api/v3/changePlanWithCoupon?code=" + row.code;
-              res.status(200).json(row);
-            })
-            .catch(function (err: any) {
-              fail(res, 500, "polis_err_creating_coupon", err);
-            })
-        );
-      })
-      .catch(function (err: any) {
-        fail(res, 500, "polis_err_creating_coupon_code", err);
-      });
-  }
-  function handle_GET_changePlanWithCoupon(
-    req: { p: { uid?: any; code?: any } },
-    res: any
-  ) {
-    var uid = req.p.uid;
-    var code = req.p.code;
-    var isCurrentUser = true;
-    getCouponInfo(code)
-      //     Argument of type '(infos: any[]) => Bluebird<any>' is not assignable to parameter of type '(value: unknown) => any'.
-      // Types of parameters 'infos' and 'value' are incompatible.
-      //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-      // @ts-ignore
-      .then(function (infos: any[]) {
-        var info = infos[0];
-        if (uid) {
-          if (uid !== info.uid) {
-            // signed in user is someone else!
-            // This could easily happen if someone is testing an auto-join conversation in another browser.
-            // So don't set the cookies in this case.
-            isCurrentUser = false;
-          }
-        }
-        return updatePlanOld(req, res, info.uid, info.plan, isCurrentUser);
-      })
-      .catch(function (err: any) {
-        emailBadProblemTime("changePlanWithCoupon failed");
-        fail(res, 500, "polis_err_changing_plan_with_coupon", err);
-      });
-  }
-
-  function getCouponInfo(couponCode: any) {
-    return pgQueryP(
-      "select * from coupons_for_free_upgrades where code = ($1);",
-      [couponCode]
-    );
-  }
-
-  function updatePlan(
-    req: {
-      headers?: Headers;
-      p: { uid?: any; plan: any; stripeResponse: string };
-    },
-    res: any,
-    uid: string,
-    planCode: number
-  ) {
-    winston.log("info", "updatePlan", uid, planCode);
-
-    // update DB and finish
-    return changePlan(uid, planCode).then(function () {
-      // Set cookie
-      var setOnPolisDomain = !domainOverride;
-      const origin = req?.headers?.origin || "";
-      if (setOnPolisDomain && origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-        setOnPolisDomain = false;
-      }
-      setPlanCookie(req, res, setOnPolisDomain, planCode);
-    });
-  }
-  function updatePlanOld(
-    req: { headers?: { origin: string; host: string }; p?: any },
-    res: {
-      writeHead: (arg0: number, arg1: { Location: string }) => void;
-      end: () => any;
-      status: (
-        arg0: number
-      ) => {
-        (): any;
-        new (): any;
-        json: { (arg0: { status: string }): void; new (): any };
-      };
-    },
-    uid: string,
-    planCode: number,
-    isCurrentUser: boolean
-  ) {
-    winston.log("info", "updatePlan", uid, planCode);
-
-    // update DB and finish
-    return changePlan(uid, planCode)
-      .then(function () {
-        // Set cookie
-        if (isCurrentUser) {
-          var protocol = devMode ? "http" : "https";
-          var setOnPolisDomain = !domainOverride;
-          var origin = req?.headers?.origin || "";
-          if (
-            setOnPolisDomain &&
-            origin.match(/^http:\/\/localhost:[0-9]{4}/)
-          ) {
-            setOnPolisDomain = false;
-          }
-          setPlanCookie(req, res, setOnPolisDomain, planCode);
-
-          // Redirect to the same URL with the path behind the fragment "#"
-          var path = "/settings";
-          if (planCode >= 99) {
-            path = "/settings/enterprise";
-          }
-          res.writeHead(302, {
-            Location: protocol + "://" + req?.headers?.host + path,
-          });
-          return res.end();
-        } else {
-          res.status(200).json({
-            status: "upgraded!",
-          });
-        }
-      })
-      .catch(function (err: any) {
-        emailBadProblemTime(
-          "User changed their plan, but we failed to update the DB."
-        );
-        fail(res, 500, "polis_err_changing_plan", err);
-      });
-  }
-
-  function handle_POST_stripe_save_token(req: { body: any }, res: any) {
-    console.log("info", "XXX - Got the params!");
-    console.log(req.body);
-    console.log("info", "XXX - Got the params!");
-  }
-  function handle_POST_stripe_upgrade(
-    req: { p: { uid?: any; plan: any; stripeResponse: string } },
-    res: { json: (arg0: {}) => void }
-  ) {
-    var uid = req.p.uid;
-    var planName = req.p.plan;
-    // Element implicitly has an 'any' type because expression of type 'string | number' can't be used to index type '{}'.
-    // No index signature with a parameter of type 'string' was found on type '{}'.ts(7053)
-    // @ts-ignore
-    var planCode = planCodes[planName];
-
-    getUserInfoForUid2(uid)
-      .then(function (user: UserType) {
-        var stripeResponse = JSON.parse(req.p.stripeResponse);
-
-        const body =
-          "Polis account upgrade: " +
-          user.hname +
-          "\n" +
-          user.email +
-          "\n" +
-          "planName " +
-          planName +
-          "\n" +
-          "planCode " +
-          planCode +
-          "\n";
-
-        emailTeam("Polis account upgraded", body);
-        return updateStripePlan(user, stripeResponse.id, user.email, planName);
-      })
-      .then(function () {
-        return updatePlan(req, res, uid, planCode);
-      })
-      .then(function () {
-        res.json({});
-      })
-      .catch(function (err: any) {
-        emailBadProblemTime(
-          "FAILED Polis account upgrade: " +
-            uid +
-            " err.type: " +
-            (err && err.type) +
-            "\n\n" +
-            err
-        );
-
-        if (err) {
-          if (err.type === "StripeCardError") {
-            return fail(res, 500, "polis_err_stripe_card_declined", err);
-          } else {
-            return fail(res, 500, "polis_err_stripe3", err);
-          }
-        } else {
-          return fail(res, 500, "polis_err_stripe2");
-        }
-      });
-  }
-
-  function handle_POST_stripe_cancel(
-    req: {
-      headers?: Headers | undefined;
-      p: { uid?: any; plan: any; stripeResponse: string };
-    },
-    res: { json: (arg0: {}) => void }
-  ) {
-    const uid = req.p.uid;
-    getUserInfoForUid2(uid).then((user: { email: string }) => {
-      emailBadProblemTime("User cancelled subscription: " + user.email);
-
-      return pgQueryP("select * from stripe_subscriptions where uid = ($1);", [
-        uid,
-        // Argument of type '(rows: string | any[], err: any) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.ts(2345)
-        // @ts-ignore
-      ]).then((rows: string | any[], err: any) => {
-        if (!rows || !rows.length) {
-          return fail(
-            res,
-            500,
-            "polis_err_stripe_cancel_no_subscription_record",
-            err
-          );
-        }
-        const record = rows[0].stripe_subscription_data;
-
-        stripe.customers.cancelSubscription(
-          record.customer,
-          record.id,
-          (err: any) => {
-            if (err) {
-              emailBadProblemTime(
-                "User cancel subscription failed: " + user.email
-              );
-              return fail(res, 500, "polis_err_stripe_cancel_failed", err);
-            }
-            return updatePlan(req, res, uid, planCodes.free).then(function () {
-              res.json({});
-            });
-          }
-        );
-      });
-    });
-  }
-
-  function handle_POST_charge(
-    req: { p: { stripeToken: any; stripeEmail: any; uid?: any; plan: any } },
-    res: any
-  ) {
-    var stripeToken = req.p.stripeToken;
-    var stripeEmail = req.p.stripeEmail;
-    var uid = req.p.uid;
-    var plan = req.p.plan;
-    // Element implicitly has an 'any' type because expression of type 'string | number' can't be used to index type '{}'.
-    // No index signature with a parameter of type 'string' was found on type '{}'.ts(7053)
-    // @ts-ignore
-    var planCode = planCodes[plan];
-
-    if (plan !== "pp") {
-      if (!stripeToken) {
-        return fail(res, 500, "polis_err_changing_plan_missing_stripeToken");
-      }
-      if (!stripeEmail) {
-        return fail(res, 500, "polis_err_changing_plan_missing_stripeEmail");
-      }
-    }
-
-    var updateStripePromise = Promise.resolve();
-    if (plan !== "pp") {
-      // not a participant pays plan, so we actually have to update stripe.
-      getUserInfoForUid2(uid).then(function (user: any) {
-        return updateStripePlan(user, stripeToken, stripeEmail, plan);
-      });
-    }
-
-    updateStripePromise
-      .then(function () {
-        return updatePlanOld(req, res, uid, planCode, true);
-      })
-      .catch(function (err: { type: string }) {
-        if (err) {
-          if (err.type === "StripeCardError") {
-            return fail(res, 500, "polis_err_stripe_card_declined", err);
-          } else {
-            return fail(res, 500, "polis_err_stripe", err);
-          }
-        }
-      });
-  }
-
   const getComments = Comment.getComments;
   const _getCommentsForModerationList = Comment._getCommentsForModerationList;
   const _getCommentsList = Comment._getCommentsList;
   const getNumberOfCommentsRemaining = Comment.getNumberOfCommentsRemaining;
 
-  /*
-   Rename column 'zid' to 'conversation_id', add a new column called 'zid' and have that be a VARCHAR of limited length.
-   Use conversation_id internally, refactor math poller to use conversation_id
-   continue to use zid externally, but it will be a string of limited length
-   Don't expose the conversation_id to the client.
-
-   plan:
-   add the new column conversation_id, copy values from zid
-   change the code to look things up by conversation_id
-
-  */
 
   function handle_GET_participation(
     req: { p: { zid: any; uid?: any; strict: any } },
@@ -7563,8 +6583,6 @@ Email verified! You can close this tab or hit the back button.
           var votesForThisComment = votesByTid[c.tid];
 
           if (!votesForThisComment || !votesForThisComment.length) {
-            console.log("skipping");
-            // console.log(votesForThisComment);
             return c;
           }
 
@@ -7657,7 +6675,7 @@ Email verified! You can close this tab or hit the back button.
   ) {
     const rid =
       req?.headers?.["x-request-id"] + " " + req?.headers?.["user-agent"];
-    winston.log("info", "getComments " + rid + " begin");
+    logger.debug("getComments begin", { rid });
 
     const isReportQuery = !_.isUndefined(req.p.rid);
 
@@ -7733,7 +6751,6 @@ Email verified! You can close this tab or hit the back button.
         }
       })
       .catch(function (err: any) {
-        winston.log("info", "getComments " + rid + " failed");
         fail(res, 500, "polis_err_get_comments", err);
       });
   } // end GET /api/v3/comments
@@ -7759,7 +6776,7 @@ Email verified! You can close this tab or hit the back button.
     ) => { (): any; new (): any; send: { (arg0: number): void; new (): any } };
   }) {
     res.setHeader("Retry-After", 0);
-    console.warn(57493875);
+    logger.warn("failWithRetryRequest");
     res.writeHead(500).send(57493875);
   }
 
@@ -7808,8 +6825,7 @@ Email verified! You can close this tab or hit the back button.
 
     getZinvite(zid)
       .catch(function (err: any) {
-        console.error(err);
-        yell("polis_err_getting_zinvite");
+        logger.error("polis_err_getting_zinvite", err);
         return void 0;
       })
       .then(function (zinvite: any) {
@@ -7830,7 +6846,7 @@ Email verified! You can close this tab or hit the back button.
         );
       })
       .catch(function (err: any) {
-        console.error(err);
+        logger.error("polis_err_sending_email", err);
       });
   }
 
@@ -7842,7 +6858,7 @@ Email verified! You can close this tab or hit the back button.
     req: { p?: ConversationType; protocol?: string; headers?: Headers },
     zinvite: string
   ) {
-    let server = devMode ? "http://localhost:5000" : "https://pol.is";
+    let server = Config.getServerUrl();
     if (domainOverride) {
       server = req?.protocol + "://" + domainOverride;
     }
@@ -7855,7 +6871,7 @@ Email verified! You can close this tab or hit the back button.
   }
 
   // function createMuteUrl(zid, tid) {
-  //     let server = devMode ? "http://localhost:5000" : "https://pol.is";
+  //     let server = Config.getServerUrl();
   //     let params = {
   //         zid: zid,
   //         tid: tid
@@ -7866,7 +6882,7 @@ Email verified! You can close this tab or hit the back button.
   // }
 
   // function createUnmuteUrl(zid, tid) {
-  //     let server = devMode ? "http://localhost:5000" : "https://pol.is";
+  //     let server = Config.getServerUrl();
   //     let params = {
   //         zid: zid,
   //         tid: tid
@@ -7923,18 +6939,13 @@ Email verified! You can close this tab or hit the back button.
   //         tid: req.p.tid,
   //         signature: req.p[HMAC_SIGNATURE_PARAM_NAME],
   //     };
-  //     winston.log("info","mute", 1);
   //     verifyHmacForQueryParams("v3/mute", params).catch(function() {
-  //     winston.log("info","mute", 2);
   //         fail(res, 403, "polis_err_signature_mismatch");
   //     }).then(function() {
-  //     winston.log("info","mute", 3);
   //         return muteComment(zid, tid);
   //     }).then(function() {
-  //     winston.log("info","mute", 4);
   //         return getComment(zid, tid);
   //     }).then(function(c) {
-  //     winston.log("info","mute", 5);
   //         res.set('Content-Type', 'text/html');
   //         res.send(
   //             "<h1>muted tid: "+c.tid+" zid:" + c.zid + "</h1>" +
@@ -7942,8 +6953,6 @@ Email verified! You can close this tab or hit the back button.
   //             "<a href=\"" + createUnmuteUrl(zid, tid) + "\">Unmute this comment.</a>"
   //         );
   //     }).catch(function(err) {
-  //     winston.log("info","mute", 6);
-  //         fail(res, 500, err);
   //     });
   // }
 
@@ -8033,9 +7042,6 @@ Email verified! You can close this tab or hit the back button.
     let is_seed = req.p.is_seed;
     let mustBeModerator = !!quote_txt || !!twitter_tweet_id || anon;
 
-    console.log("POST_comments begin", Date.now());
-    console.log("POST_comments params", req.p);
-
     // either include txt, or a tweet id
     if (
       (_.isUndefined(txt) || txt === "") &&
@@ -8052,16 +7058,10 @@ Email verified! You can close this tab or hit the back button.
     }
 
     function doGetPid() {
-      console.log("POST_comments doGetPid begin", Date.now());
-
       // PID_FLOW
       if (_.isUndefined(pid)) {
         return getPidPromise(req.p.zid, req.p.uid, true).then((pid: number) => {
           if (pid === -1) {
-            console.log(
-              "POST_comments doGetPid addParticipant begin",
-              Date.now()
-            );
             //           Argument of type '(rows: any[]) => number' is not assignable to parameter of type '(value: unknown) => number | PromiseLike<number>'.
             // Types of parameters 'rows' and 'value' are incompatible.
             //             Type 'unknown' is not assignable to type 'any[]'.ts(2345)
@@ -8072,19 +7072,13 @@ Email verified! You can close this tab or hit the back button.
               let ptpt = rows[0];
               pid = ptpt.pid;
               currentPid = pid;
-              console.log(
-                "POST_comments doGetPid addParticipant done",
-                Date.now()
-              );
               return pid;
             });
           } else {
-            console.log("POST_comments doGetPid done", Date.now());
             return pid;
           }
         });
       }
-      console.log("POST_comments doGetPid done", Date.now());
       return Promise.resolve(pid);
     }
     let twitterPrepPromise = Promise.resolve();
@@ -8096,8 +7090,6 @@ Email verified! You can close this tab or hit the back button.
         zid
       );
     }
-
-    console.log("POST_comments before twitterPrepPromise", Date.now());
 
     twitterPrepPromise
       .then(
@@ -8112,20 +7104,18 @@ Email verified! You can close this tab or hit the back button.
         //       Type 'void' is not assignable to type '{ ptpt: any; tweet: any; }'.ts(2769)
         // @ts-ignore
         function (info: { ptpt: any; tweet: any }) {
-          console.log("POST_comments after twitterPrepPromise", Date.now());
-
           let ptpt = info && info.ptpt;
           // let twitterUser = info && info.twitterUser;
           let tweet = info && info.tweet;
 
           if (tweet) {
-            console.log("Post comments tweet", txt, tweet.txt);
+            logger.debug("Post comments tweet", { txt, tweetTxt: tweet.txt });
             txt = tweet.text;
           } else if (quote_txt) {
-            console.log("Post comments quote_txt", txt, quote_txt);
+            logger.debug("Post comments quote_txt", { txt, quote_txt });
             txt = quote_txt;
           } else {
-            console.log("Post comments txt", txt);
+            logger.debug("Post comments txt", { txt });
           }
 
           let ip =
@@ -8143,8 +7133,7 @@ Email verified! You can close this tab or hit the back button.
             referrer: req?.headers?.referer,
           });
           isSpamPromise.catch(function (err: any) {
-            console.error("isSpam failed");
-            winston.log("info", err);
+            logger.error("isSpam failed", err);
           });
           // let isSpamPromise = Promise.resolve(false);
           let isModeratorPromise = isModerator(zid, uid);
@@ -8163,9 +7152,9 @@ Email verified! You can close this tab or hit the back button.
               !_.isUndefined(xid) && !_.isNull(xid)
                 ? getXidStuff(xid, zid)
                 : Promise.resolve();
-            pidPromise = xidUserPromise.then((xidUser: UserType) => {
+            pidPromise = xidUserPromise.then((xidUser: UserType | "noXidRecord") => {
               shouldCreateXidRecord = xidUser === "noXidRecord";
-              if (xidUser && xidUser.uid) {
+              if (typeof xidUser === 'object') {
                 uid = xidUser.uid;
                 pid = xidUser.pid;
                 return pid;
@@ -8187,8 +7176,6 @@ Email verified! You can close this tab or hit the back button.
 
           let commentExistsPromise = commentExists(zid, txt);
 
-          console.log("POST_comments before Promise.all", Date.now());
-
           return Promise.all([
             pidPromise,
             conversationInfoPromise,
@@ -8196,8 +7183,6 @@ Email verified! You can close this tab or hit the back button.
             commentExistsPromise,
           ]).then(
             function (results: any[]) {
-              console.log("POST_comments after Promise.all", Date.now());
-
               let pid = results[0];
               let conv = results[1];
               let is_moderator = results[2];
@@ -8225,58 +7210,38 @@ Email verified! You can close this tab or hit the back button.
               }
 
               if (_.isUndefined(txt)) {
-                console.log("undefined txt");
-                console.log(req.p);
+                logger.error("polis_err_post_comments_missing_txt");
                 throw "polis_err_post_comments_missing_txt";
               }
               let bad = hasBadWords(txt);
 
-              console.log("POST_comments before isSpamPromise", Date.now());
               return isSpamPromise
                 .then(
                   function (spammy: any) {
-                    winston.log(
-                      "info",
-                      "spam test says: " +
-                        txt +
-                        " " +
-                        (spammy ? "spammy" : "not_spammy")
-                    );
                     return spammy;
                   },
                   function (err: any) {
-                    console.error("spam check failed");
-                    winston.log("info", err);
+                    logger.error("spam check failed", err);
                     return false; // spam check failed, continue assuming "not spammy".
                   }
                 )
                 .then(function (spammy: any) {
-                  console.log("POST_comments after isSpamPromise", Date.now());
                   let velocity = 1;
                   let active = true;
                   let classifications = [];
                   if (bad && conv.profanity_filter) {
                     active = false;
                     classifications.push("bad");
-                    console.log(
-                      "active=false because (bad && conv.profanity_filter)"
-                    );
+                    logger.info("active=false because (bad && conv.profanity_filter)");
                   }
                   if (spammy && conv.spam_filter) {
                     active = false;
                     classifications.push("spammy");
-                    console.log(
-                      "active=false because (spammy && conv.spam_filter)"
-                    );
+                    logger.info("active=false because (spammy && conv.spam_filter)");
                   }
                   if (conv.strict_moderation) {
                     active = false;
-                    console.log(
-                      "active=false because (conv.strict_moderation)"
-                    );
-                  }
-                  if (active) {
-                    console.log("active=true");
+                    logger.info("active=false because (conv.strict_moderation)");
                   }
 
                   let mod = 0; // hasn't yet been moderated.
@@ -8287,11 +7252,6 @@ Email verified! You can close this tab or hit the back button.
                     active = true;
                   }
                   let authorUid = ptpt ? ptpt.uid : uid;
-
-                  console.log(
-                    "POST_comments before INSERT INTO COMMENTS",
-                    Date.now()
-                  );
 
                   Promise.all([detectLanguage(txt)]).then((a: any[]) => {
                     let detections = a[0];
@@ -8336,7 +7296,10 @@ Email verified! You can close this tab or hit the back button.
                             polisTypes.mod.unmoderated
                           )
                             .catch(function (err: any) {
-                              yell("polis_err_getting_modstatus_comment_count");
+                              logger.error(
+                                "polis_err_getting_modstatus_comment_count",
+                                err
+                              );
                               return void 0;
                             })
                             .then(function (n: number) {
@@ -8358,11 +7321,6 @@ Email verified! You can close this tab or hit the back button.
                           addNotificationTask(zid);
                         }
 
-                        console.log(
-                          "POST_comments before votesPost",
-                          Date.now()
-                        );
-
                         // It should be safe to delete this. Was added to postpone the no-auto-vote change for old conversations.
                         if (is_seed && _.isUndefined(vote) && zid <= 17037) {
                           vote = 0;
@@ -8371,7 +7329,7 @@ Email verified! You can close this tab or hit the back button.
                         let createdTime = comment.created;
                         let votePromise = _.isUndefined(vote)
                           ? Promise.resolve()
-                          : votesPost(uid, pid, zid, tid, vote, 0, false);
+                          : votesPost(uid, pid, zid, tid, vote, 0);
 
                         return (
                           votePromise
@@ -8398,18 +7356,10 @@ Email verified! You can close this tab or hit the back button.
                                   }
                                 }, 100);
 
-                                console.log(
-                                  "POST_comments sending json",
-                                  Date.now()
-                                );
                                 res.json({
                                   tid: tid,
                                   currentPid: currentPid,
                                 });
-                                console.log(
-                                  "POST_comments sent json",
-                                  Date.now()
-                                );
                               },
                               function (err: any) {
                                 fail(res, 500, "polis_err_vote_on_create", err);
@@ -8868,7 +7818,7 @@ Email verified! You can close this tab or hit the back button.
       };
     }
   ) {
-    console.log("logging handle_GET_participationInit req", req);
+    logger.info("handle_GET_participationInit");
     // let qs = {
     //   conversation_id: req.p.conversation_id,
     // };
@@ -9025,12 +7975,10 @@ Email verified! You can close this tab or hit the back button.
           res.status(200).json(o);
         },
         function (err: any) {
-          console.error(err);
           fail(res, 500, "polis_err_get_participationInit2", err);
         }
       )
       .catch(function (err: any) {
-        console.error(err);
         fail(res, 500, "polis_err_get_participationInit", err);
       });
   }
@@ -9139,7 +8087,6 @@ Email verified! You can close this tab or hit the back button.
               req.p.tid,
               req.p.vote,
               req.p.weight,
-              true
             );
           })
           .then(function (o: { vote: any }) {
@@ -9608,234 +8555,6 @@ Email verified! You can close this tab or hit the back button.
     });
   }
 
-  function sendGradeForAssignment(
-    oauth_consumer_key: any,
-    oauth_consumer_secret: any,
-    params: {
-      lis_result_sourcedid: string;
-      gradeFromZeroToOne: string;
-      lis_outcome_service_url: any;
-    }
-  ) {
-    let replaceResultRequestBody =
-      "" +
-      '<?xml version="1.0" encoding="UTF-8"?>' +
-      '<imsx_POXEnvelopeRequest xmlns="http://www.imsglobal.org/services/ltiv1p1/xsd/imsoms_v1p0">' +
-      "<imsx_POXHeader>" +
-      "<imsx_POXRequestHeaderInfo>" +
-      "<imsx_version>V1.0</imsx_version>" +
-      "<imsx_messageIdentifier>999999123</imsx_messageIdentifier>" +
-      "</imsx_POXRequestHeaderInfo>" +
-      "</imsx_POXHeader>" +
-      "<imsx_POXBody>" +
-      "<replaceResultRequest>" + // parser has???  xml.at_css('imsx_POXBody *:first').name.should == 'replaceResultResponse'
-      "<resultRecord>" +
-      "<sourcedGUID>" +
-      "<sourcedId>" +
-      params.lis_result_sourcedid +
-      "</sourcedId>" +
-      "</sourcedGUID>" +
-      "<result>" +
-      "<resultScore>" +
-      "<language>en</language>" + // this is the formatting of the resultScore (for example europe might use a comma. Just stick to en formatting here.)
-      "<textString>" +
-      params.gradeFromZeroToOne +
-      "</textString>" +
-      "</resultScore>" +
-      "</result>" +
-      "</resultRecord>" +
-      "</replaceResultRequest>" +
-      "</imsx_POXBody>" +
-      "</imsx_POXEnvelopeRequest>";
-
-    let oauth = new OAuth.OAuth(
-      // Argument of type 'null' is not assignable to parameter of type 'string'.ts(2345)
-      // @ts-ignore
-      null, //'https://api.twitter.com/oauth/request_token',
-      null, //'https://api.twitter.com/oauth/access_token',
-      oauth_consumer_key, //'your application consumer key',
-      oauth_consumer_secret, //'your application secret',
-      "1.0", //'1.0A',
-      null,
-      "HMAC-SHA1"
-    );
-    return new Promise(function (
-      resolve: (arg0: any, arg1: any) => void,
-      reject: (arg0: any) => void
-    ) {
-      oauth.post(
-        params.lis_outcome_service_url, //'https://api.twitter.com/1.1/trends/place.json?id=23424977',
-        // Argument of type 'undefined' is not assignable to parameter of type 'string'.ts(2345)
-        // @ts-ignore
-        void 0, //'your user token for this app', //test user token
-        void 0, //'your user secret for this app', //test user secret
-        replaceResultRequestBody,
-        "application/xml",
-        function (e: any, data: any, res: any) {
-          if (e) {
-            winston.log("info", "grades foo failed");
-            console.error(e);
-            reject(e);
-          } else {
-            winston.log("info", "grades foo ok!");
-            resolve(params, data);
-          }
-          // winston.log("info",require('util').inspect(data));
-        }
-      );
-    });
-  }
-
-  function sendCanvasGradesIfNeeded(zid: any, ownerUid: string) {
-    // get the lti_user_ids for participants who voted or commented
-    let goodLtiUserIdsPromise = pgQueryP(
-      "select lti_user_id from " +
-        "(select distinct uid from " +
-        "(select distinct pid from votes where zid = ($1) UNION " +
-        "select distinct pid from comments where zid = ($1)) as x " +
-        "inner join participants p on x.pid = p.pid where p.zid = ($1)) as good_uids " +
-        "inner join lti_users on good_uids.uid = lti_users.uid;",
-      [zid]
-    );
-
-    let callbackInfoPromise = pgQueryP(
-      "select * from canvas_assignment_conversation_info ai " +
-        "inner join canvas_assignment_callback_info ci " +
-        "on ai.custom_canvas_assignment_id = ci.custom_canvas_assignment_id " +
-        "where ai.zid = ($1);",
-      [zid]
-    );
-
-    let ownerLtiCredsPromise = pgQueryP(
-      "select * from lti_oauthv1_credentials where uid = ($1);",
-      [ownerUid]
-    );
-
-    return Promise.all([
-      goodLtiUserIdsPromise,
-      callbackInfoPromise,
-      ownerLtiCredsPromise,
-    ]).then(function (results: any[]) {
-      let isFullPointsEarningLtiUserId = _.indexBy(results[0], "lti_user_id");
-      let callbackInfos = results[1];
-      if (!callbackInfos || !callbackInfos.length) {
-        // TODO may be able to check for scenarios like missing callback infos, where votes and comments and canvas_assignment_conversation_info exist, and then throw an error
-        return;
-      }
-      let ownerLtiCreds = results[2];
-      if (!ownerLtiCreds || !ownerLtiCreds.length) {
-        throw new Error(
-          "polis_err_lti_oauth_credentials_are_missing " + ownerUid
-        );
-      }
-      ownerLtiCreds = ownerLtiCreds[0];
-      if (
-        !ownerLtiCreds.oauth_shared_secret ||
-        !ownerLtiCreds.oauth_consumer_key
-      ) {
-        throw new Error("polis_err_lti_oauth_credentials_are_bad " + ownerUid);
-      }
-
-      let promises = callbackInfos.map(function (
-        assignmentCallbackInfo: Assignment
-      ) {
-        let gradeFromZeroToOne = isFullPointsEarningLtiUserId[
-          assignmentCallbackInfo.lti_user_id
-        ]
-          ? 1.0
-          : 0.0;
-        assignmentCallbackInfo.gradeFromZeroToOne = String(gradeFromZeroToOne);
-        winston.log(
-          "info",
-          "grades assigned" +
-            gradeFromZeroToOne +
-            " lti_user_id " +
-            assignmentCallbackInfo.lti_user_id
-        );
-        return sendGradeForAssignment(
-          ownerLtiCreds.oauth_consumer_key,
-          ownerLtiCreds.oauth_shared_secret,
-          assignmentCallbackInfo
-        );
-      });
-      return Promise.all(promises);
-    });
-  }
-
-  function updateLocalRecordsToReflectPostedGrades(
-    listOfGradingContexts: any[]
-  ) {
-    listOfGradingContexts = listOfGradingContexts || [];
-    return Promise.all(
-      listOfGradingContexts.map(function (gradingContext: {
-        gradeFromZeroToOne: string;
-        tool_consumer_instance_guid?: any;
-        lti_context_id: any;
-        lti_user_id: any;
-        custom_canvas_assignment_id: any;
-      }) {
-        winston.log(
-          "info",
-          "grading set to " + gradingContext.gradeFromZeroToOne
-        );
-        return pgQueryP(
-          "update canvas_assignment_callback_info set grade_assigned = ($1) where tool_consumer_instance_guid = ($2) and lti_context_id = ($3) and lti_user_id = ($4) and custom_canvas_assignment_id = ($5);",
-          [
-            gradingContext.gradeFromZeroToOne,
-            gradingContext.tool_consumer_instance_guid,
-            gradingContext.lti_context_id,
-            gradingContext.lti_user_id,
-            gradingContext.custom_canvas_assignment_id,
-          ]
-        );
-      })
-    );
-  }
-
-  function handle_GET_lti_oauthv1_credentials(
-    req: { p: { uid: string } },
-    res: {
-      status: (
-        arg0: number
-      ) => {
-        (): any;
-        new (): any;
-        json: { (arg0: string): void; new (): any };
-      };
-    }
-  ) {
-    let uid = "FOO";
-    if (req.p && req.p.uid) {
-      uid = req.p.uid;
-    }
-    Promise.all([generateTokenP(40, false), generateTokenP(40, false)]).then(
-      // No overload matches this call.
-      // Overload 1 of 2, '(onFulfill?: ((value: [unknown, unknown]) => Resolvable<void>) | undefined, onReject?: ((error: any) => Resolvable<void>) | undefined):
-      //     Bluebird<void>', gave the following error.
-      //   Argument of type '(results: string[]) => void' is not assignable to parameter of type '(value: [unknown, unknown]) => Resolvable<void>'.
-      //     Types of parameters 'results' and 'value' are incompatible.
-      //       Type '[unknown, unknown]' is not assignable to type 'string[]'.
-      //         Type 'unknown' is not assignable to type 'string'.
-      // Overload 2 of 2, '(onfulfilled?: ((value: [unknown, unknown]) => Resolvable<void>) | null | undefined, onrejected?: ((reason: any) => PromiseLike<never>) | null | undefined): Bluebird<void>', gave the following error.
-      //   Argument of type '(results: string[]) => void' is not assignable to parameter of type '(value: [unknown, unknown]) => Resolvable<void>'.
-      //     Types of parameters 'results' and 'value' are incompatible.
-      //     Type '[unknown, unknown]' is not assignable to type 'string[]'.ts(2769)
-      // @ts-ignore
-      function (results: string[]) {
-        let key = "polis_oauth_consumer_key_" + results[0];
-        let secret = "polis_oauth_shared_secret_" + results[1];
-        let x = [uid, "'" + key + "'", "'" + secret + "'"].join(",");
-        // return the query, they we can manually run this in the pg shell, and email? the keys to the instructor
-        res
-          .status(200)
-          .json(
-            "INSERT INTO lti_oauthv1_credentials (uid, oauth_consumer_key, oauth_shared_secret) values (" +
-              x +
-              ") returning oauth_consumer_key, oauth_shared_secret;"
-          );
-      }
-    );
-  }
   function handle_POST_conversation_close(
     req: { p: { zid: any; uid?: any } },
     res: {
@@ -9862,38 +8581,10 @@ Email verified! You can close this tab or hit the back button.
           return;
         }
         let conv = rows[0];
-        // if (conv.is_active) {
-        // regardless of old state, go ahead and close it, and update grades. will make testing easier.
         pgQueryP(
           "update conversations set is_active = false where zid = ($1);",
           [conv.zid]
         )
-          .then(function () {
-            // might need to send some grades
-            let ownerUid = req.p.uid;
-            sendCanvasGradesIfNeeded(conv.zid, ownerUid)
-              .then(function (listOfContexts: any) {
-                return updateLocalRecordsToReflectPostedGrades(listOfContexts);
-              })
-              .then(function () {
-                res.status(200).json({});
-              })
-              .catch(function (err: any) {
-                fail(
-                  res,
-                  500,
-                  "polis_err_closing_conversation_sending_grades",
-                  err
-                );
-              });
-          })
-          .catch(function (err: any) {
-            fail(res, 500, "polis_err_closing_conversation2", err);
-          });
-        // } else {
-        //     // was already closed.
-        //     res.status(204).send("");
-        // }
       })
       .catch(function (err: any) {
         fail(res, 500, "polis_err_closing_conversation", err);
@@ -9999,8 +8690,6 @@ Email verified! You can close this tab or hit the back button.
         link_url: any;
         send_created_email: any;
         conversation_id: string;
-        custom_canvas_assignment_id: any;
-        tool_consumer_instance_guid?: any;
         context: any;
       };
     },
@@ -10097,9 +8786,6 @@ Email verified! You can close this tab or hit the back button.
           fields.owner_sees_participation_stats = !!req.p
             .owner_sees_participation_stats;
         }
-        if (!_.isUndefined(req.p.launch_presentation_return_url_hex)) {
-          fields.lti_users_only = true;
-        }
         if (!_.isUndefined(req.p.link_url)) {
           fields.link_url = req.p.link_url;
         }
@@ -10154,81 +8840,23 @@ Email verified! You can close this tab or hit the back button.
                             "\n" +
                             "The team at pol.is\n"
                         ).catch(function (err: any) {
-                          console.error(err);
+                          logger.error(
+                            "polis_err_sending_conversation_created_email",
+                            err
+                          );
                         });
                       })
                       .catch(function (err: any) {
-                        yell("polis_err_sending_conversation_created_email");
-                        winston.log("info", err);
-                      });
-                  }
-
-                  if (req.p.launch_presentation_return_url_hex) {
-                    // conv.lti_redirect = {
-                    //     return_type: "iframe",
-                    //     launch_presentation_return_url: hexToStr(req.p.launch_presentation_return_url_hex),
-                    //     width: 320,
-                    //     height: 900,
-                    //     url: getServerNameWithProtocol(req) + "/" + req.p.conversation_id,
-                    // };
-
-                    // using links because iframes are pretty crappy within Canvas assignments.
-                    let linkText = "pol.is conversation";
-                    if (req.p.topic) {
-                      linkText += " (" + req.p.topic + ")";
-                    }
-                    let linkTitle = "";
-                    if (req.p.description) {
-                      linkTitle += req.p.description;
-                    }
-                    conv.lti_redirect = {
-                      return_type: "url",
-                      launch_presentation_return_url: hexToStr(
-                        req.p.launch_presentation_return_url_hex
-                      ),
-                      url:
-                        getServerNameWithProtocol(req) +
-                        "/" +
-                        req.p.conversation_id,
-                      text: linkText,
-                      title: linkTitle,
-                      target: "_blank", // Open in a new window.
-                    };
-                  }
-
-                  if (req.p.custom_canvas_assignment_id) {
-                    addCanvasAssignmentConversationInfoIfNeeded(
-                      req.p.zid,
-                      req.p.tool_consumer_instance_guid,
-                      req.p.context, // lti_context_id,
-                      req.p.custom_canvas_assignment_id
-                    )
-                      .then(function () {
-                        finishOne(res, conv, true, successCode);
-                      })
-                      .catch(function (err: any) {
-                        fail(
-                          res,
-                          500,
-                          "polis_err_saving_assignment_grading_context",
+                        logger.error(
+                          "polis_err_sending_conversation_created_email",
                           err
                         );
-                        emailBadProblemTime(
-                          "PUT conversation worked, but couldn't save assignment context"
-                        );
                       });
-                  } else {
-                    finishOne(res, conv, true, successCode);
                   }
 
-                  updateConversationModifiedTime(req.p.zid);
+                  finishOne(res, conv, true, successCode);
 
-                  //     // LTI redirect to create e
-                  //     // let url = getServerNameWithProtocol(req) + "/" + req.p.conversation_id;
-                  //     // redirectToLtiEditorDestinationWithDetailsAboutIframe(req, res, req.p.launch_presentation_return_url, url, 320, 900);
-                  // // } else {
-                  // finishOne(res, conv);
-                  // // }
+                  updateConversationModifiedTime(req.p.zid);
                 })
                 .catch(function (err: any) {
                   fail(res, 500, "polis_err_update_conversation", err);
@@ -10369,7 +8997,7 @@ Email verified! You can close this tab or hit the back button.
       [pmqid],
       function (err: any, result: { rows: string | any[] }) {
         if (err) {
-          winston.log("info", err);
+          logger.error("polis_err_zid_missing_for_question", err);
           callback(err);
           return;
         }
@@ -10847,7 +9475,7 @@ Email verified! You can close this tab or hit the back button.
   function getOneConversation(zid: any, uid?: any, lang?: null) {
     return Promise.all([
       pgQueryP_readOnly(
-        "select * from conversations left join  (select uid, site_id, plan from users) as u on conversations.owner = u.uid where conversations.zid = ($1);",
+        "select * from conversations left join  (select uid, site_id from users) as u on conversations.owner = u.uid where conversations.zid = ($1);",
         [zid]
       ),
       getConversationHasMetadata(zid),
@@ -10884,7 +9512,6 @@ Email verified! You can close this tab or hit the back button.
         }
         conv.is_mod = conv.site_id === requestingUserInfo.site_id;
         conv.is_owner = conv.owner === uid;
-        conv.pp = false; // participant pays (WIP)
         delete conv.uid; // conv.owner is what you want, uid shouldn't be returned.
         return conv;
       });
@@ -10915,8 +9542,7 @@ Email verified! You can close this tab or hit the back button.
     let want_inbox_item_participant_html =
       req.p.want_inbox_item_participant_html;
     let context = req.p.context;
-    // let limit = req.p.limit;
-    winston.log("info", "thecontext", context);
+
     // this statement is currently a subset of the next one
     // let zidListQuery = "select zid from page_ids where site_id = (select site_id from users where uid = ($1))";
 
@@ -10954,7 +9580,6 @@ Email verified! You can close this tab or hit the back button.
         let orClauses;
         if (!_.isUndefined(req.p.context)) {
           if (req.p.context === "/") {
-            winston.log("info", "asdf" + req.p.context + "asdf");
             // root of roots returns all public conversations
             // TODO lots of work to decide what's relevant
             // There is a bit of mess here, because we're returning both public 'roots' conversations, and potentially private conversations that you are already in.
@@ -10962,7 +9587,6 @@ Email verified! You can close this tab or hit the back button.
             isRootsQuery = true; // more conditions follow in the ANDs below
           } else {
             // knowing a context grants access to those conversations (for now at least)
-            winston.log("info", "CONTEXT", context);
             orClauses = sql_conversations.context.equals(req.p.context);
           }
         } else {
@@ -11353,141 +9977,13 @@ Email verified! You can close this tab or hit the back button.
   function encodeParams(o: {
     monthly?: any;
     forceEmbedded?: boolean;
-    xPolisLti?: any;
-    tool_consumer_instance_guid?: any;
     context?: any;
-    custom_canvas_assignment_id?: any;
   }) {
     let stringifiedJson = JSON.stringify(o);
     let encoded = "ep1_" + strToHex(stringifiedJson);
     return encoded;
   }
 
-  function handle_GET_enterprise_deal_url(
-    req: { p: { monthly: any; maxUsers: any; plan_name: any; plan_id: any } },
-    res: { send: (arg0: string) => void }
-  ) {
-    var o: { [key: string]: string } = {
-      monthly: req.p.monthly,
-    };
-    if (req.p.maxUsers) {
-      o.maxUsers = req.p.maxUsers;
-    }
-    if (req.p.plan_name) {
-      o.plan_name = req.p.plan_name;
-    }
-    if (req.p.plan_id) {
-      o.plan_id = req.p.plan_id;
-    }
-    res.send("https://pol.is/settings/enterprise/" + encodeParams(o));
-  }
-  function handle_GET_stripe_account_connect(
-    req: any,
-    res: {
-      set: (arg0: {
-        "Content-Type": string;
-      }) => {
-        (): any;
-        new (): any;
-        send: { (arg0: string): void; new (): any };
-      };
-    }
-  ) {
-    var stripe_client_id = process.env.STRIPE_CLIENT_ID;
-
-    var stripeUrl =
-      "https://connect.stripe.com/oauth/authorize?response_type=code&client_id=" +
-      stripe_client_id +
-      "&scope=read_write";
-    res
-      .set({
-        "Content-Type": "text/html",
-      })
-      .send(
-        "<html><body>" +
-          "<a href ='" +
-          stripeUrl +
-          "'>Connect Pol.is to Stripe</a>" +
-          "</body></html>"
-      );
-  }
-  function handle_GET_stripe_account_connected_oauth_callback(
-    req: { p: { code: any; error: string; error_description: any } },
-    res: {
-      set: (arg0: {
-        "Content-Type": string;
-      }) => {
-        (): any;
-        new (): any;
-        send: { (arg0: string): void; new (): any };
-      };
-    }
-  ) {
-    var code = req.p.code;
-    // var access_token = req.p.access_token;
-    // var error = req.p.error;
-    // var error_description = req.p.error_description;
-    if (req.p.error) {
-      fail(
-        res,
-        500,
-        "polis_err_fetching_stripe_info_" + req.p.error,
-        req.p.error_description
-      );
-      return;
-    }
-
-    // Make /oauth/token endpoint POST request
-    request.post(
-      {
-        url: "https://connect.stripe.com/oauth/token",
-        form: {
-          grant_type: "authorization_code",
-          client_id: process.env.STRIPE_CLIENT_ID,
-          code: code,
-          client_secret: process.env.STRIPE_SECRET_KEY,
-        },
-      },
-      function (err: any, r: any, body: string) {
-        if (err) {
-          fail(res, 500, "polis_err_stripe_oauth", err);
-          return;
-        }
-        const parsedBody = JSON.parse(body);
-        pgQueryP(
-          "INSERT INTO stripe_accounts (" +
-            "stripe_account_token_type, " +
-            "stripe_account_stripe_publishable_key, " +
-            "stripe_account_scope, " +
-            "stripe_account_livemode, " +
-            "stripe_account_stripe_user_id, " +
-            "stripe_account_refresh_token, " +
-            "stripe_account_access_token " +
-            ") VALUES ($1, $2, $3, $4, $5, $6, $7);",
-          [
-            parsedBody.token_type,
-            parsedBody.stripe_publishable_key,
-            parsedBody.scope,
-            parsedBody.livemode,
-            parsedBody.stripe_user_id,
-            parsedBody.refresh_token,
-            parsedBody.access_token,
-          ]
-        ).then(
-          function () {
-            res
-              .set({
-                "Content-Type": "text/html",
-              })
-              .send("<html><body>success!</body></html>");
-          },
-          function (err: any) {
-            fail(res, 500, "polis_err_saving_stripe_info", err);
-          }
-        );
-      }
-    );
-  }
   function handle_GET_conversations(
     req: {
       p: ConversationType;
@@ -11677,7 +10173,6 @@ Email verified! You can close this tab or hit the back button.
 
     xidStuffReady
       .then(() => {
-        winston.log("info", "context", req.p.context);
         let generateShortUrl = req.p.short_url;
 
         isUserAllowedToCreateConversations(
@@ -11738,7 +10233,7 @@ Email verified! You can close this tab or hit the back button.
               function (err: any, result: { rows: { zid: any }[] }) {
                 if (err) {
                   if (isDuplicateKey(err)) {
-                    yell(err);
+                    logger.error("polis_err_add_conversation", err);
                     failWithRetryRequest(res);
                   } else {
                     fail(res, 500, "polis_err_add_conversation", err);
@@ -11844,7 +10339,6 @@ Email verified! You can close this tab or hit the back button.
       ) => { (): any; new (): any; json: { (arg0: {}): void; new (): any } };
     }
   ) {
-    winston.log("info", req.p);
     pgQuery_readOnly(
       "SELECT * FROM users WHERE uid = $1",
       [req.p.uid],
@@ -11878,7 +10372,7 @@ Email verified! You can close this tab or hit the back button.
               "The team at pol.is";
 
             return sendTextEmail(
-              POLIS_FROM_ADDRESS,
+              polisFromAddress,
               email,
               "Link: " + createdLink,
               body
@@ -11911,8 +10405,8 @@ Email verified! You can close this tab or hit the back button.
     }
   ) {
     if (
-      req.p.webserver_pass !== process.env.WEBSERVER_PASS ||
-      req.p.webserver_username !== process.env.WEBSERVER_USERNAME
+      req.p.webserver_pass !== Config.webserverPass ||
+      req.p.webserver_username !== Config.webserverUsername
     ) {
       return fail(res, 403, "polis_err_notifyTeam_auth");
     }
@@ -11923,7 +10417,7 @@ Email verified! You can close this tab or hit the back button.
         res.status(200).json({});
       })
       .catch((err: any) => {
-        return fail(res, 500, "polis_err_notifyTeam");
+        return fail(res, 500, "polis_err_notifyTeam", err);
       });
   }
 
@@ -11944,36 +10438,28 @@ Email verified! You can close this tab or hit the back button.
     }
   ) {
     if (
-      req.p.webserver_pass !== process.env.WEBSERVER_PASS ||
-      req.p.webserver_username !== process.env.WEBSERVER_USERNAME
+      req.p.webserver_pass !== Config.webserverPass ||
+      req.p.webserver_username !== Config.webserverUsername
     ) {
       return fail(res, 403, "polis_err_sending_export_link_to_email_auth");
     }
 
-    const domain = process.env.PRIMARY_POLIS_URL;
+    const serverUrl = Config.getServerUrl();
     const email = req.p.email;
     const subject =
       "Polis data export for conversation pol.is/" + req.p.conversation_id;
-    const fromAddress = `Polis Team <${adminEmailDataExport}>`;
+    const fromAddress = `Polis Team <${Config.adminEmailDataExport}>`;
     const body = `Greetings
 
-You created a data export for conversation ${domain}/${req.p.conversation_id} that has just completed. You can download the results for this conversation at the following url:
+You created a data export for conversation ${serverUrl}/${req.p.conversation_id} that has just completed. You can download the results for this conversation at the following url:
 
-https://${domain}/api/v3/dataExport/results?filename=${req.p.filename}&conversation_id=${req.p.conversation_id}
+${serverUrl}/api/v3/dataExport/results?filename=${req.p.filename}&conversation_id=${req.p.conversation_id}
 
 Please let us know if you have any questions about the data.
 
 Thanks for using Polis!
 `;
 
-    console.log("SENDING EXPORT EMAIL");
-    console.log({
-      domain,
-      email,
-      subject,
-      fromAddress,
-      body,
-    });
     sendTextEmail(fromAddress, email, subject, body)
       .then(function () {
         res.status(200).json({});
@@ -11990,8 +10476,8 @@ Thanks for using Polis!
       // Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
       // Type 'undefined' is not assignable to type 'string'.ts(2345)
       // @ts-ignore
-      process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-      process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+      Config.twitterConsumerKey, //'your application consumer key',
+      Config.twitterConsumerSecret, //'your application secret',
       "1.0A",
       null,
       "HMAC-SHA1"
@@ -12011,15 +10497,13 @@ Thanks for using Polis!
         void 0, //'your user secret for this app', //test user secret
         body,
         "multipart/form-data",
-        function (e: any, data: any, res: any) {
-          if (e) {
-            console.error("get twitter token failed");
-            console.error(e);
-            reject(e);
+        function (err: any, data: any, res: any) {
+          if (err) {
+            logger.error("get twitter token failed", err);
+            reject(err);
           } else {
             resolve(data);
           }
-          // winston.log("info",require('util').inspect(data));
         }
       );
     });
@@ -12040,7 +10524,6 @@ Thanks for using Polis!
 
     getTwitterRequestToken(returnUrl)
       .then(function (data: string) {
-        winston.log("info", data);
         data += "&callback_url=" + dest;
         // data += "&callback_url=" + encodeURIComponent(getServerNameWithProtocol(req) + "/foo");
         res.redirect("https://api.twitter.com/oauth/authenticate?" + data);
@@ -12059,8 +10542,8 @@ Thanks for using Polis!
       // Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
       // Type 'undefined' is not assignable to type 'string'.ts(2345)
       // @ts-ignore
-      process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-      process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+      Config.twitterConsumerKey, //'your application consumer key',
+      Config.twitterConsumerSecret, //'your application secret',
       "1.0A",
       null,
       "HMAC-SHA1"
@@ -12077,15 +10560,13 @@ Thanks for using Polis!
         void 0, //'your user secret for this app', //test user secret
         body,
         "multipart/form-data",
-        function (e: any, data: any, res: any) {
-          if (e) {
-            console.error("get twitter token failed");
-            console.error(e);
-            reject(e);
+        function (err: any, data: any, res: any) {
+          if (err) {
+            logger.error("get twitter token failed", err);
+            reject(err);
           } else {
             resolve(data);
           }
-          // winston.log("info",require('util').inspect(data));
         }
       );
     });
@@ -12099,8 +10580,6 @@ Thanks for using Polis!
     o: { twitter_user_id: any; twitter_screen_name?: any },
     useCache: boolean
   ) {
-    console.log("getTwitterUserInfo", o);
-
     let twitter_user_id = o.twitter_user_id;
     let twitter_screen_name = o.twitter_screen_name;
     let params: TwitterParameters = {
@@ -12122,8 +10601,8 @@ Thanks for using Polis!
       // Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
       // Type 'undefined' is not assignable to type 'string'.ts(2345)
       // @ts-ignore
-      process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-      process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+      Config.twitterConsumerKey, //'your application consumer key',
+      Config.twitterConsumerSecret, //'your application secret',
       "1.0A",
       null,
       "HMAC-SHA1"
@@ -12154,19 +10633,18 @@ Thanks for using Polis!
           void 0, //'your user secret for this app', //test user secret
           params,
           "multipart/form-data",
-          function (e: any, data: any, res: any) {
-            if (e) {
-              console.error(
-                "get twitter token failed for identifier: " + identifier
+          function (err: any, data: any, res: any) {
+            if (err) {
+              logger.error(
+                "get twitter token failed for identifier: " + identifier,
+                err
               );
-              console.error(e);
               suspendedOrPotentiallyProblematicTwitterIds.push(identifier);
-              reject(e);
+              reject(err);
             } else {
               twitterUserInfoCache.set(identifier, data);
               resolve(data);
             }
-            // winston.log("info",require('util').inspect(data));
           }
         );
       }
@@ -12180,8 +10658,8 @@ Thanks for using Polis!
       // Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
       // Type 'undefined' is not assignable to type 'string'.ts(2345)
       // @ts-ignore
-      process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-      process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+      Config.twitterConsumerKey, //'your application consumer key',
+      Config.twitterConsumerSecret, //'your application secret',
       "1.0A",
       null,
       "HMAC-SHA1"
@@ -12199,17 +10677,14 @@ Thanks for using Polis!
           // @ts-ignore
           void 0, //'your user token for this app', //test user token
           void 0, //'your user secret for this app', //test user secret
-          function (e: any, data: string, res: any) {
-            if (e) {
-              console.error(" - - - - get twitter tweet failed - - - -");
-              console.error(e);
-              reject(e);
+          function (err: any, data: string, res: any) {
+            if (err) {
+              logger.error("get twitter tweet failed", err);
+              reject(err);
             } else {
               data = JSON.parse(data);
-              console.dir(data);
               resolve(data);
             }
-            // winston.log("info",require('util').inspect(data));
           }
         );
       }
@@ -12220,8 +10695,8 @@ Thanks for using Polis!
   //   let oauth = new OAuth.OAuth(
   //     'https://api.twitter.com/oauth/request_token', // null
   //     'https://api.twitter.com/oauth/access_token', // null
-  //     process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-  //     process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+  //     Config.twitterConsumerKey, //'your application consumer key',
+  //     Config.twitterConsumerSecret, //'your application secret',
   //     '1.0A',
   //     null,
   //     'HMAC-SHA1'
@@ -12233,16 +10708,12 @@ Thanks for using Polis!
   //       void 0, //'your user secret for this app', //test user secret
   //       function(e, data, res) {
   //         if (e) {
-  //           console.error(" - - - - get twitter tweet failed - - - -");
-  //           console.error(e);
   //           reject(e);
   //         } else {
   //           let foo = JSON.parse(data);
   //           foo = _.pluck(foo, "text");
-  //           console.dir(foo);
   //           resolve(data);
   //         }
-  //         // winston.log("info",require('util').inspect(data));
   //       }
   //     );
   //   });
@@ -12262,8 +10733,8 @@ Thanks for using Polis!
       // Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
       // Type 'undefined' is not assignable to type 'string'.ts(2345)
       // @ts-ignore
-      process.env.TWITTER_CONSUMER_KEY, //'your application consumer key',
-      process.env.TWITTER_CONSUMER_SECRET, //'your application secret',
+      Config.twitterConsumerKey, //'your application consumer key',
+      Config.twitterConsumerSecret, //'your application secret',
       "1.0A",
       null,
       "HMAC-SHA1"
@@ -12284,23 +10755,20 @@ Thanks for using Polis!
           user_id: list_of_twitter_user_id.join(","),
         },
         "multipart/form-data",
-        function (e: any, data: string, res: any) {
-          if (e) {
-            console.error("get twitter token failed");
-            console.error(e);
+        function (err: any, data: any, res: any) {
+          if (err) {
+            logger.error("get twitter token failed", err);
             // we should probably check that the error is code 17:  { statusCode: 404, data: '{"errors":[{"code":17,"message":"No user matches for specified terms."}]}' }
             list_of_twitter_user_id.forEach(function (id: string) {
-              console.log(
+              logger.info(
                 "adding twitter_user_id to suspendedOrPotentiallyProblematicTwitterIds: " +
                   id
               );
               suspendedOrPotentiallyProblematicTwitterIds.push(id);
             });
-            reject(e);
+            reject(err);
           } else {
             data = JSON.parse(data);
-            // winston.log("info",data);
-            // winston.log("info",require('util').inspect(data));
             resolve(data);
           }
         }
@@ -12336,16 +10804,16 @@ Thanks for using Polis!
       resolve: (arg0: any) => void,
       reject: (arg0: any) => void
     ) {
-      winston.log("info", "retryFunctionWithPromise", numTries);
+      logger.debug("retryFunctionWithPromise", { numTries });
       f().then(
         function (x: any) {
-          winston.log("info", "retryFunctionWithPromise", "RESOLVED");
+          logger.debug("retryFunctionWithPromise RESOLVED");
           resolve(x);
         },
         function (err: any) {
           numTries -= 1;
           if (numTries <= 0) {
-            winston.log("info", "retryFunctionWithPromise", "REJECTED");
+            logger.error("retryFunctionWithPromise REJECTED", err);
             reject(err);
           } else {
             retryFunctionWithPromise(f, numTries).then(resolve, reject);
@@ -12379,9 +10847,6 @@ Thanks for using Polis!
 
           getTwitterUserInfoBulk(twitter_user_ids)
             .then(function (info: any[]) {
-              // Uncomment to log out lots of twitter crap for a good time
-              //console.dir(info);
-
               let updateQueries = info.map(function (u: {
                 id: any;
                 screen_name: any;
@@ -12404,8 +10869,6 @@ Thanks for using Polis!
                   "modified = now_as_millis() " +
                   "where twitter_user_id = ($1);";
 
-                // uncomment to see some other twitter crap
-                //console.log(q);
                 return pgQueryP(q, [
                   u.id,
                   u.screen_name,
@@ -12417,13 +10880,12 @@ Thanks for using Polis!
                   u.location,
                 ]);
               });
-              return Promise.all(updateQueries).then(function () {
-                console.log("done123");
-              });
+              return Promise.all(updateQueries);
             })
             .catch(function (err: any) {
-              console.error(
-                "error updating twitter users:" + twitter_user_ids.join(" ")
+              logger.error(
+                "error updating twitter users: " + twitter_user_ids.join(" "),
+                err
               );
             });
         })
@@ -12432,9 +10894,6 @@ Thanks for using Polis!
   // Ensure we don't call this more than 60 times in each 15 minute window (across all of our servers/use-cases)
   setInterval(updateSomeTwitterUsers, 1 * 60 * 1000);
   updateSomeTwitterUsers();
-  // getTwitterTweetById("627881237101846528").then(function(tweet) {
-  //     console.dir(tweet);
-  // });
   function createUserFromTwitterInfo(o: any) {
     return createDummyUser().then(function (uid?: any) {
       return getAndInsertTwitterUser(o, uid).then(function (result: {
@@ -12593,9 +11052,6 @@ Thanks for using Polis!
   function getAndInsertTwitterUser(o: any, uid?: any) {
     return getTwitterUserInfo(o, false).then(function (userString: string) {
       const u: UserType = JSON.parse(userString)[0];
-      winston.log("info", "TWITTER USER INFO");
-      winston.log("info", u);
-      winston.log("info", "/TWITTER USER INFO");
       return (
         pgQueryP(
           "insert into twitter_users (" +
@@ -12646,15 +11102,10 @@ Thanks for using Polis!
     res: { redirect: (arg0: any) => void }
   ) {
     let uid = req.p.uid;
-    winston.log("info", "twitter oauth callback req.p", req.p);
 
     // TODO "Upon a successful authentication, your callback_url would receive a request containing the oauth_token and oauth_verifier parameters. Your application should verify that the token matches the request token received in step 1."
 
     let dest = req.p.dest;
-    winston.log("info", "twitter_oauth_callback uid", uid);
-    winston.log("info", "twitter_oauth_callback params");
-    winston.log("info", req.p);
-    winston.log("info", "twitter_oauth_callback params end");
     // this api sometimes succeeds, and sometimes fails, not sure why
     function tryGettingTwitterAccessToken() {
       return getTwitterAccessToken({
@@ -12665,7 +11116,6 @@ Thanks for using Polis!
     retryFunctionWithPromise(tryGettingTwitterAccessToken, 20)
       .then(
         function (o: string) {
-          winston.log("info", "TWITTER ACCESS TOKEN");
           let pairs = o.split("&");
           let kv: TwitterParameters = {};
           pairs.forEach(function (pair: string) {
@@ -12678,8 +11128,6 @@ Thanks for using Polis!
             //}
             kv[k] = v;
           });
-          winston.log("info", kv);
-          winston.log("info", "/TWITTER ACCESS TOKEN");
 
           // TODO - if no auth, generate a new user.
 
@@ -12692,9 +11140,6 @@ Thanks for using Polis!
             .then(
               function (userStringPayload: string) {
                 const u: UserType = JSON.parse(userStringPayload)[0];
-                winston.log("info", "TWITTER USER INFO");
-                winston.log("info", u);
-                winston.log("info", "/TWITTER USER INFO");
                 return pgQueryP(
                   "insert into twitter_users (" +
                     "uid," +
@@ -12836,7 +11281,6 @@ Thanks for using Polis!
                 );
               },
               function (err: any) {
-                winston.log("error", "failed to getTwitterUserInfo");
                 fail(res, 500, "polis_err_twitter_auth_041", err);
               }
             )
@@ -12863,8 +11307,6 @@ Thanks for using Polis!
     return getSocialParticipantsForMod
       .apply(null, [zid, limit, mod, convOwner])
       .then(function (results: any) {
-        let elapsed = Date.now() - start;
-        console.log("getSocialParticipantsForMod_timed", elapsed);
         return results;
       });
   }
@@ -13066,7 +11508,6 @@ Thanks for using Polis!
       limit,
       mod,
     ]).then(function (response: any) {
-      console.log("getSocialParticipants", response);
       socialParticipantsCache.set(cacheKey, response);
       return response;
     });
@@ -13254,7 +11695,7 @@ Thanks for using Polis!
         // @ts-ignore
         vectors[v.pid][v.tid] = "p";
       } else {
-        console.error("unknown vote value");
+        logger.error("unknown vote value");
         // let it stay 'u'
       }
     }
@@ -13356,7 +11797,6 @@ Thanks for using Polis!
             return geoCodeWithGoogleApi(locationString).then(function (result: {
               geometry: { location: { lat: any; lng: any } };
             }) {
-              winston.log("info", result);
               let lat = result.geometry.location.lat;
               let lng = result.geometry.location.lng;
               // NOTE: not waiting for the response to this - it might fail in the case of a race-condition, since we don't have upsert
@@ -13405,7 +11845,7 @@ Thanks for using Polis!
         let httpCount = JSON.parse(httpResult).count;
         let httpsCount = JSON.parse(httpsResult).count;
         if (httpCount > 0 && httpsCount > 0 && httpCount === httpsCount) {
-          console.warn(
+          logger.warn(
             "found matching http and https twitter share counts, if this is common, check twitter api to see if it has changed."
           );
         }
@@ -13690,7 +12130,6 @@ Thanks for using Polis!
       .then((results: string | any[]) => {
         if (!results || !results.length) {
           res.json({});
-          console.log("NOTHING");
           return;
         }
         var o = results[0];
@@ -13699,7 +12138,6 @@ Thanks for using Polis!
             o[key] = decrypt(val);
           }
         });
-        console.log(o);
         res.json({});
       })
       .catch((err: any) => {
@@ -13788,10 +12226,10 @@ Thanks for using Polis!
         x.facebook.verified = temp.verified;
         // shouln't return this to client
         delete x.facebook.fb_public_profile;
-      } catch (e) {
-        console.error(
-          "error parsing JSON of fb_public_profile for uid: ",
-          p.uid
+      } catch (err) {
+        logger.error(
+          "error parsing JSON of fb_public_profile for uid: " + p.uid,
+          err
         );
       }
 
@@ -13965,8 +12403,6 @@ Thanks for using Polis!
 
         return pgQueryP_readOnly(q, [zid]).then(function (comments: any) {
           let uids = _.pluck(comments, "uid");
-          console.log("famous uids", uids);
-
           uids = _.uniq(uids);
           return uids;
         });
@@ -14062,10 +12498,8 @@ Thanks for using Polis!
         let pids = participantsWithSocialInfo.map(function (p: { pid: any }) {
           return p.pid;
         });
-        console.log("mike1234", pids.length);
 
         let pidToData = _.indexBy(participantsWithSocialInfo, "pid"); // TODO this is extra work, probably not needed after some rethinking
-        console.log("mike12345", pidToData);
 
         // polisSocialSettings.forEach(function(p) {
         //     if (shouldSkip(p)) {
@@ -14121,8 +12555,6 @@ Thanks for using Polis!
         });
         pids = _.uniq(pids, true);
 
-        console.log("mike12346", pids);
-
         return getVotesForZidPidsWithTimestampCheck(zid, pids, math_tick).then(
           function (vectors: any) {
             // TODO parallelize with above query
@@ -14135,14 +12567,10 @@ Thanks for using Polis!
                     let bid = pidsToBids[pid];
                     let notInBucket = _.isUndefined(bid);
                     let isSelf = pidToData[pid].isSelf;
-                    // winston.log("info","pidToData", pid, myPid, isSelf);
-                    // winston.log("info",pidToData[pid]);
                     if (notInBucket && !isSelf) {
                       // pidToData[pid].ignore = true;
-                      console.log("mike12347", "deleting", pid);
                       delete pidToData[pid]; // if the participant isn't in a bucket, they probably haven't voted enough for the math worker to bucketize them.
                     } else if (!!pidToData[pid]) {
-                      console.log("mike12348", "keeping", pid);
                       pidToData[pid].votes = value; // no separator, like this "adupuuauuauupuuu";
                       pidToData[pid].bid = bid;
                     }
@@ -14251,9 +12679,6 @@ Thanks for using Polis!
   ) {
     let einvite = req.p.einvite;
 
-    winston.log("info", "select * from einvites where einvite = ($1);", [
-      einvite,
-    ]);
     pgQueryP("select * from einvites where einvite = ($1);", [einvite])
       //     Argument of type '(rows: string | any[]) => void' is not assignable to parameter of type '(value: unknown) => void | PromiseLike<void>'.
       // Types of parameters 'rows' and 'value' are incompatible.
@@ -14376,857 +12801,6 @@ Thanks for using Polis!
     });
   }
 
-  function renderLtiLinkagePage(
-    req: {
-      p: UserType;
-    },
-    res: {
-      set: (arg0: { "Content-Type": string }) => void;
-      status: (
-        arg0: number
-      ) => {
-        (): any;
-        new (): any;
-        send: { (arg0: string): void; new (): any };
-      };
-    },
-    afterJoinRedirectUrl?: string
-  ) {
-    let context_id = req.p.context_id;
-    let user_id = req.p.user_id;
-    let user_image = req.p.user_image;
-    let tool_consumer_instance_guid = req.p.tool_consumer_instance_guid;
-
-    let greeting = "";
-    // TODO If we're doing this basic form, we can't just return json from the /login call
-
-    let form1 =
-      "" +
-      '<h2>create a new <img src="https://pol.is/polis-favicon_favicon.png" height="20px"> pol<span class="Logo--blue">.</span>is account</h2>' +
-      '<p><form role="form" class="FormVertical" action="' +
-      getServerNameWithProtocol(req) +
-      '/api/v3/auth/new" method="POST">' +
-      '<div class="FormVertical-group">' +
-      '<label class="FormLabel" for="gatekeeperLoginEmail">Email</label>' +
-      '<input type="text" id="email" name="email" id="gatekeeperLoginEmail" style="width: 100%;"  class="FormControl" value="' +
-      (req.p.lis_person_contact_email_primary || "") +
-      '">' +
-      "</div>" +
-      '<label class="FormLabel" for="gatekeeperLoginName">Full Name</label>' +
-      '<input type="text" id="hname" name="hname" id="gatekeeperLoginName" style="width: 100%;"  class="FormControl" value="' +
-      (req.p.lis_person_name_full || "") +
-      '">' +
-      '<div class="FormVertical-group">' +
-      '<label class="FormLabel" for="gatekeeperLoginPassword">' +
-      "Password" +
-      "</label>" +
-      '<input type="password" id="password" name="password" style="width: 100%;" id="gatekeeperLoginPassword" class="FormControl">' +
-      "<div>" +
-      '<label class="FormLabel" for="gatekeeperLoginPassword2">' +
-      "Repeat Password" +
-      "</label>" +
-      '<input type="password" id="password2" name="password2" style="width: 100%;" id="gatekeeperLoginPassword2" class="FormControl">' +
-      "</div>" +
-      '<input type="hidden" name="lti_user_id" value="' +
-      user_id +
-      '">' +
-      '<input type="hidden" name="lti_user_image" value="' +
-      user_image +
-      '">' +
-      '<input type="hidden" name="lti_context_id" value="' +
-      context_id +
-      '">' +
-      '<input type="hidden" name="tool_consumer_instance_guid" value="' +
-      tool_consumer_instance_guid +
-      '">' +
-      '<input type="hidden" name="afterJoinRedirectUrl" value="' +
-      afterJoinRedirectUrl +
-      '">' +
-      "</div>" +
-      '<input type="checkbox" name="gatekeeperTosPrivacy" id="gatekeeperTosPrivacy" style="position: relative; top: -1px"> &nbsp; By signing up, you agree to our <a href="https://pol.is/tos"> terms of use</a> and <a href="https://pol.is/privacy"> privacy policy </a>' +
-      '<div class="row" id="errorDiv"></div>' +
-      '<div class="FormVertical-group">' +
-      '<button type="submit" class="Btn Btn-primary">Create new pol.is account</button>' +
-      "</div>" +
-      "</form></p>";
-
-    let form2 =
-      "" +
-      "<p> - OR - </p>" +
-      "<h2>sign in with an existing pol.is account</h2>" +
-      '<p><form role="form" class="FormVertical" action="' +
-      getServerNameWithProtocol(req) +
-      '/api/v3/auth/login" method="POST">' +
-      '<div class="FormVertical-group">' +
-      '<label class="FormLabel" for="gatekeeperLoginEmail">Email</label>' +
-      '<input type="text" id="email" name="email" id="gatekeeperLoginEmail" style="width: 100%;" class="FormControl">' +
-      "</div>" +
-      '<div class="FormVertical-group">' +
-      '<label class="FormLabel" for="gatekeeperLoginPassword">' +
-      "Password" +
-      "</label>" +
-      '<input type="password" id="password" name="password" id="gatekeeperLoginPassword" style="width: 100%;" class="FormControl">' +
-      '<input type="hidden" name="lti_user_id" value="' +
-      user_id +
-      '">' +
-      '<input type="hidden" name="lti_user_image" value="' +
-      user_image +
-      '">' +
-      '<input type="hidden" name="lti_context_id" value="' +
-      context_id +
-      '">' +
-      '<input type="hidden" name="tool_consumer_instance_guid" value="' +
-      tool_consumer_instance_guid +
-      '">' +
-      '<input type="hidden" name="afterJoinRedirectUrl" value="' +
-      afterJoinRedirectUrl +
-      '">' +
-      '<a href="/pwresetinit" class="FormLink">Forgot your password?</a>' +
-      "</div>" +
-      "" +
-      '<div class="row" id="errorDiv"></div>' +
-      '<div class="FormVertical-group">' +
-      '<button type="submit" class="Btn Btn-primary">Sign In</button>' +
-      "</div>" +
-      "</form></p>";
-    res.set({
-      "Content-Type": "text/html",
-    });
-    // let customPart = isInstructor ? "you are the instructor" : "you are a Student";
-
-    let html =
-      "" +
-      "<!DOCTYPE html><html lang='en'>" +
-      "<head>" +
-      '<meta name="viewport" content="width=device-width, initial-scale=1;">' +
-      "</head>" +
-      "<body style='max-width:320px; font-family: Futura, Helvetica, sans-serif;'>" +
-      greeting +
-      form1 +
-      form2 +
-      // " <p style='background-color: yellow;'>" +
-      //     JSON.stringify(req.body)+
-      //     "<img src='"+req.p.user_image+"'></img>"+
-      // "</p>"+
-      "</body></html>";
-
-    res.status(200).send(html);
-  }
-  // team meetings - schedule with others, smart converence room
-  // or redirect tool
-  // students already pay an online fee
-
-  // ADA? 508 compliance
-  // accessibility - Teach Act: those who don't have dexterity
-  // colors
-  // screen readers
-  /*
-2014-09-21T23:16:15.351247+00:00 app[web.1]: course_setup
-2014-09-21T23:16:15.188414+00:00 app[web.1]: { oauth_consumer_key: 'asdfasdf',
-2014-09-21T23:16:15.188418+00:00 app[web.1]:   oauth_signature_method: 'HMAC-SHA1',
-2014-09-21T23:16:15.188420+00:00 app[web.1]:   oauth_timestamp: '1411341372',
-2014-09-21T23:16:15.188422+00:00 app[web.1]:   oauth_nonce: 'JHnE7tcVBHYx9MjLcQS2jWNTGCD56F5wqwePk4tnk',
-2014-09-21T23:16:15.188423+00:00 app[web.1]:   oauth_version: '1.0',
-2014-09-21T23:16:15.188425+00:00 app[web.1]:   context_id: '543f4cb8ba0ad2939faa5b2643cb1415d3ada3c5',
-2014-09-21T23:16:15.188426+00:00 app[web.1]:   context_label: 'polis_demo_course_code',
-2014-09-21T23:16:15.188428+00:00 app[web.1]:   context_title: 'polis demo course',
-2014-09-21T23:16:15.188430+00:00 app[web.1]:   custom_canvas_enrollment_state: 'active',
-2014-09-21T23:16:15.188432+00:00 app[web.1]:   custom_canvas_xapi_url: 'https://canvas.instructure.com/api/lti/v1/tools/46849/xapi',
-2014-09-21T23:16:15.188433+00:00 app[web.1]:   launch_presentation_document_target: 'iframe',
-2014-09-21T23:16:15.188435+00:00 app[web.1]:   launch_presentation_height: '400',
-2014-09-21T23:16:15.188436+00:00 app[web.1]:   launch_presentation_locale: 'en',
-2014-09-21T23:16:15.188437+00:00 app[web.1]:   launch_presentation_return_url: 'https://canvas.instructure.com/courses/875179',
-2014-09-21T23:16:15.188439+00:00 app[web.1]:   launch_presentation_width: '800',
-2014-09-21T23:16:15.188441+00:00 app[web.1]:   lti_message_type: 'basic-lti-launch-request',
-2014-09-21T23:16:15.188442+00:00 app[web.1]:   lti_version: 'LTI-1p0',
-2014-09-21T23:16:15.188443+00:00 app[web.1]:   oauth_callback: 'about:blank',
-2014-09-21T23:16:15.188445+00:00 app[web.1]:   resource_link_id: '543f4cb8ba0ad2939faa5b2643cb1415d3ada3c5',
-2014-09-21T23:16:15.188447+00:00 app[web.1]:   resource_link_title: 'polis nav',
-2014-09-21T23:16:15.188448+00:00 app[web.1]:   roles: 'Instructor',
-2014-09-21T23:16:15.188450+00:00 app[web.1]:   tool_consumer_info_product_family_code: 'canvas',
-2014-09-21T23:16:15.188451+00:00 app[web.1]:   tool_consumer_info_version: 'cloud',
-2014-09-21T23:16:15.188453+00:00 app[web.1]:   tool_consumer_instance_contact_email: 'notifications@instructure.com',
-2014-09-21T23:16:15.188454+00:00 app[web.1]:   tool_consumer_instance_guid: '07adb3e60637ff02d9ea11c7c74f1ca921699bd7.canvas.instructure.com',
-2014-09-21T23:16:15.188456+00:00 app[web.1]:   tool_consumer_instance_name: 'Free For Teachers',
-2014-09-21T23:16:15.188457+00:00 app[web.1]:   user_id: '15bbe33bd1cf5355011a9ce6ebe1072256beea01',
-2014-09-21T23:16:15.188459+00:00 app[web.1]:   user_image: 'https://secure.gravatar.com/avatar/256caee7b9886c54155ef0d316dffabc?s=50&d=https%3A%2F%2Fcanvas.instructure.com%2Fimages%2Fmessages%2Favatar-50.png',
-2014-09-21T23:16:15.188461+00:00 app[web.1]:   oauth_signature: 'jJ3TbKvalDUYvELXNvnzOfdCwGo=' }
-*/
-  // A compromise would be this:
-  // Instructors see a custom inbox for the course, and can create conversations there. make it easy to copy and paste links..
-  // how do we deal with sections? can't do this.
-  // Conversations created here will be under the uid of the account owner... which may be problematic later with school-wide accounts... if we ever offer that
-  //
-  // Complication: sections -- are they needed this quarter? maybe better to just do the linkage, and then try to make it easy to post the stuff...
-  //  it is possible for teachers to create a duplicate assignment, and have it show for certain sections...
-  //     so we can rely on custom_canvas_assignment_id
-
-  // TODO rename to LTI/launch
-  // TODO save launch contexts in mongo. For now, to err on the side of collecting extra data, let them be duplicated. Attach a timestamp too.
-  // TODO return HTML from the auth functions. the html should contain the token? so that ajax calls can be made.
-  function handle_POST_lti_setup_assignment(
-    req: {
-      p: {
-        user_id: any;
-        context_id: any;
-        tool_consumer_instance_guid?: any;
-        lis_outcome_service_url: any;
-        uid?: any;
-      };
-    },
-    res: any
-  ) {
-    winston.log("info", req);
-    // let roles = req.p.roles;
-    // let isInstructor = /[iI]nstructor/.exec(roles); // others: Learner
-    let user_id = req.p.user_id;
-    let context_id = req.p.context_id;
-    // let user_image = req.p.user_image || "";
-    if (!req.p.tool_consumer_instance_guid) {
-      emailBadProblemTime(
-        "couldn't find tool_consumer_instance_guid, maybe this isn't Canvas?"
-      );
-    }
-
-    // TODO SECURITY we need to verify the signature
-    // let oauth_consumer_key = req.p.oauth_consumer_key;
-
-    let dataSavedPromise = pgQueryP(
-      "insert into lti_single_assignment_callback_info (lti_user_id, lti_context_id, lis_outcome_service_url, stringified_json_of_post_content) values ($1, $2, $3, $4);",
-      [
-        user_id,
-        context_id,
-        req.p.lis_outcome_service_url || "",
-        JSON.stringify(req.p),
-      ]
-    );
-
-    Promise.all([dataSavedPromise])
-      .then(function () {
-        // check if signed in (NOTE that if they're in the Canvas mobile app, the cookies may be shared with the browser on the device)
-        if (req.p.uid) {
-          // Check if linked to this uid.
-          pgQueryP(
-            "select * from lti_users left join users on lti_users.uid = users.uid where lti_user_id = ($1);",
-            [user_id]
-          )
-            .then(function (rows: any) {
-              // find the correct one - note: this loop may be useful in warning when people have multiple linkages
-              let userForLtiUserId: any = null;
-              (rows || []).forEach(function (row: { uid?: any }) {
-                if (row.uid === req.p.uid) {
-                  userForLtiUserId = row;
-                }
-              });
-              if (userForLtiUserId) {
-                // if (teacher pays) {
-                //     // you're good!
-                // } else {
-                //     if (you paid) {
-                User.renderLtiLinkageSuccessPage(req, res, {
-                  // Argument of type '{ context_id: any; email: any; }' is not assignable to parameter of type '{ email: string; }'.
-                  // Object literal may only specify known properties, and 'context_id' does not exist in type '{ email: string; }'.ts(2345)
-                  // @ts-ignore
-                  context_id: context_id,
-                  // user_image: userForLtiUserId.user_image,
-                  email: userForLtiUserId.email,
-                });
-                // } else { // you (student) have not yet paid
-                //     // gotta pay
-                // }
-                // }
-              } else {
-                // you are signed in, but not linked to the signed in user
-                // WARNING! CLEARING COOKIES - since it's difficult to have them click a link to sign out, and then re-initiate the LTI POST request from Canvas, just sign them out now and move on.
-                clearCookies(req, res);
-                winston.log("info", "lti_linkage didnt exist");
-                // Have them sign in again, since they weren't linked.
-                // NOTE: this could be streamlined by showing a sign-in page that also says "you are signed in as foo, link account foo? OR sign in as someone else"
-                renderLtiLinkagePage(req, res);
-              }
-            })
-            .catch(function (err: any) {
-              fail(res, 500, "polis_err_launching_lti_finding_user", err);
-            });
-        } else {
-          // no uid (no cookies)
-          // Have them sign in to set up the linkage
-          winston.log("info", "lti_linkage - no uid");
-          renderLtiLinkagePage(req, res);
-        }
-      })
-      .catch(function (err: any) {
-        fail(res, 500, "polis_err_launching_lti_save", err);
-      });
-  } // end /api/v3/LTI/setup_assignment
-
-  // function handle_POST_lti_canvas_nav(req, res) {
-  //     winston.log("info",req);
-  //     let roles = req.p.roles;
-  //     let isInstructor = /[iI]nstructor/.exec(roles); // others: Learner
-  //     let user_id = req.p.user_id;
-  //     let context_id = req.p.context_id;
-  //     let user_image = req.p.user_image || "";
-  //     // if (!req.p.tool_consumer_instance_guid) {
-  //     //     emailBadProblemTime("couldn't find tool_consumer_instance_guid, maybe this isn't Canvas?");
-  //     // }
-
-  //     winston.log("info",req.p);
-
-  //     // // TODO SECURITY we need to verify the signature
-  //     // let oauth_consumer_key = req.p.oauth_consumer_key;
-
-  //     // Check if linked to this uid.
-  //     pgQueryP("select * from lti_users left join users on lti_users.uid = users.uid where lti_users.lti_user_id = ($1) and lti_users.tool_consumer_instance_guid = ($2);", [user_id, req.p.tool_consumer_instance_guid]).then(function(rows) {
-  //         let userForLtiUserId = null;
-  //         if (rows.length) {
-  //             userForLtiUserId = rows[0];
-  //         }
-
-  //         winston.log("info",'got user for lti_user_id:' + JSON.stringify(userForLtiUserId));
-
-  //         if (userForLtiUserId) {
-  //             // if (teacher pays) {
-  //             //     // you're good!
-  //             // } else {
-  //             //     if (you paid) {
-  //                     // renderLtiLinkageSuccessPage(req, res, {
-  //                     //     context_id: context_id,
-  //                     //     // user_image: userForLtiUserId.user_image,
-  //                     //     email: userForLtiUserId.email,
-  //                     // });
-  //                     let inboxLaunchParams = encodeParams({
-  //                         context: context_id, // we're using the LTI context_id as a polis conversation context. scope the inbox to the course
-  //                         xPolisLti: createPolisLtiToken(req.p.tool_consumer_instance_guid, req.p.user_id),  // x-polis-lti header
-  //                         // TODO add token
-  //                     });
-  //                     res.redirect("https://preprod.pol.is/inbox/" + inboxLaunchParams);
-
-  //                 // } else { // you (student) have not yet paid
-  //                 //     // gotta pay
-  //                 // }
-  //             // }
-  //         } else {
-  //             // not linked yet. send them to an auth page, which should do the linkage, then send them to inbox with the funky params...
-
-  //             // you are signed in, but not linked to the signed in user
-  //             // WARNING! CLEARING COOKIES - since it's difficult to have them click a link to sign out, and then re-initiate the LTI POST request from Canvas, just sign them out now and move on.
-  //             clearCookies(req, res);
-  //             winston.log("info",'lti_linkage didnt exist');
-  //             // Have them sign in again, since they weren't linked.
-  //             // NOTE: this could be streamlined by showing a sign-in page that also says "you are signed in as foo, link account foo? OR sign in as someone else"
-  //             renderLtiLinkagePage(req, res);
-  //         }
-  //     }).catch(function(err) {
-  //         fail(res, 500, "polis_err_launching_lti_finding_user", err);
-  //     });
-
-  // } // end /api/v3/LTI/canvas_nav
-
-  function addCanvasAssignmentConversationInfoIfNeeded(
-    zid: any,
-    tool_consumer_instance_guid?: any,
-    lti_context_id?: any,
-    custom_canvas_assignment_id?: any
-  ) {
-    return (
-      getCanvasAssignmentInfo(
-        tool_consumer_instance_guid,
-        lti_context_id,
-        custom_canvas_assignment_id
-      )
-        //     Argument of type '(rows: string | any[]) => number | Promise<unknown>' is not assignable to parameter of type '(value: unknown) => unknown'.
-        // Types of parameters 'rows' and 'value' are incompatible.
-        //   Type 'unknown' is not assignable to type 'string | any[]'.
-        //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-        // @ts-ignore
-        .then(function (rows: string | any[]) {
-          let exists = rows && rows.length;
-          if (exists) {
-            return exists;
-          } else {
-            return pgQueryP(
-              "insert into canvas_assignment_conversation_info (zid, tool_consumer_instance_guid, lti_context_id, custom_canvas_assignment_id) values ($1, $2, $3, $4);",
-              [
-                zid,
-                tool_consumer_instance_guid,
-                lti_context_id,
-                custom_canvas_assignment_id,
-              ]
-            );
-          }
-        })
-    );
-  }
-
-  function getCanvasAssignmentInfo(
-    tool_consumer_instance_guid: string,
-    lti_context_id: string,
-    custom_canvas_assignment_id: string
-  ) {
-    winston.log(
-      "info",
-      "grades select * from canvas_assignment_conversation_info where tool_consumer_instance_guid = " +
-        tool_consumer_instance_guid +
-        " and lti_context_id = " +
-        lti_context_id +
-        " and custom_canvas_assignment_id = " +
-        custom_canvas_assignment_id +
-        ";"
-    );
-    return pgQueryP(
-      "select * from canvas_assignment_conversation_info where tool_consumer_instance_guid = ($1) and lti_context_id = ($2) and custom_canvas_assignment_id = ($3);",
-      [tool_consumer_instance_guid, lti_context_id, custom_canvas_assignment_id]
-    );
-  }
-
-  function addCanvasAssignmentConversationCallbackParamsIfNeeded(
-    lti_user_id: any,
-    lti_context_id: any,
-    custom_canvas_assignment_id: any,
-    tool_consumer_instance_guid?: any,
-    lis_outcome_service_url?: any,
-    lis_result_sourcedid?: any,
-    stringified_json_of_post_content?: string
-  ) {
-    return (
-      getCanvasAssignmentConversationCallbackParams(
-        lti_user_id,
-        lti_context_id,
-        custom_canvas_assignment_id,
-        tool_consumer_instance_guid
-      )
-        //     Argument of type '(rows: string | any[]) => Promise<unknown>' is not assignable to parameter of type '(value: unknown) => unknown'.
-        // Types of parameters 'rows' and 'value' are incompatible.
-        //   Type 'unknown' is not assignable to type 'string | any[]'.
-        //     Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-        // @ts-ignore
-        .then(function (rows: string | any[]) {
-          if (rows && rows.length) {
-            // update
-            // this is failing, but it has been ok, since the insert worked (i assume)
-            return pgQueryP(
-              "update canvas_assignment_callback_info set lis_outcome_service_url = ($5), lis_result_sourcedid = ($6), stringified_json_of_post_content = ($7) where lti_user_id = ($1) and lti_context_id = ($2) and custom_canvas_assignment_id = ($3) and tool_consumer_instance_guid = ($4);",
-              [
-                lti_user_id,
-                lti_context_id,
-                custom_canvas_assignment_id,
-                tool_consumer_instance_guid,
-                lis_outcome_service_url,
-                lis_result_sourcedid,
-                stringified_json_of_post_content,
-              ]
-            );
-          } else {
-            // insert
-            return pgQueryP(
-              "insert into canvas_assignment_callback_info (lti_user_id, lti_context_id, custom_canvas_assignment_id, tool_consumer_instance_guid, lis_outcome_service_url, lis_result_sourcedid, stringified_json_of_post_content) values ($1, $2, $3, $4, $5, $6, $7);",
-              [
-                lti_user_id,
-                lti_context_id,
-                custom_canvas_assignment_id,
-                tool_consumer_instance_guid,
-                lis_outcome_service_url,
-                lis_result_sourcedid,
-                stringified_json_of_post_content,
-              ]
-            );
-          }
-        })
-    );
-  }
-
-  function getCanvasAssignmentConversationCallbackParams(
-    lti_user_id: any,
-    lti_context_id: any,
-    custom_canvas_assignment_id: any,
-    tool_consumer_instance_guid?: any
-  ) {
-    return pgQueryP(
-      "select * from canvas_assignment_callback_info where lti_user_id = ($1) and lti_context_id = ($2) and custom_canvas_assignment_id = ($3) and tool_consumer_instance_guid = ($4);",
-      [
-        lti_user_id,
-        lti_context_id,
-        custom_canvas_assignment_id,
-        tool_consumer_instance_guid,
-      ]
-    );
-  }
-  function handle_POST_lti_conversation_assignment(
-    req: {
-      p: {
-        roles: any;
-        user_id: any;
-        context_id: any;
-        tool_consumer_instance_guid?: any;
-        lis_result_sourcedid: any;
-        custom_canvas_assignment_id: any;
-        lis_outcome_service_url: any;
-        oauth_consumer_key: string;
-      };
-      body: any;
-    },
-    res: {
-      redirect: (arg0: string) => void;
-      set: (arg0: { "Content-Type": string }) => void;
-      send: (arg0: string) => void;
-    }
-  ) {
-    let roles = req.p.roles;
-    let isInstructor = /[iI]nstructor/.exec(roles); // others: Learner
-    // let isLearner = /[lL]earner/.exec(roles);
-    let user_id = req.p.user_id;
-    let context_id = req.p.context_id;
-    // let user_image = req.p.user_image || "";
-
-    winston.log("info", "grades req.body " + JSON.stringify(req.body));
-    winston.log("info", "grades req.p " + JSON.stringify(req.p));
-
-    // TODO SECURITY we need to verify the signature
-    // let oauth_consumer_key = req.p.oauth_consumer_key;
-
-    function getPolisUserForLtiUser() {
-      return (
-        pgQueryP(
-          "select * from lti_users left join users on lti_users.uid = users.uid where lti_users.lti_user_id = ($1) and lti_users.tool_consumer_instance_guid = ($2);",
-          [user_id, req.p.tool_consumer_instance_guid]
-        )
-          //       Argument of type '(rows: string | any[]) => any' is not assignable to parameter of type '(value: unknown) => any'.
-          // Types of parameters 'rows' and 'value' are incompatible.
-          //   Type 'unknown' is not assignable to type 'string | any[]'.
-          //       Type 'unknown' is not assignable to type 'any[]'.ts(2345)
-          // @ts-ignore
-          .then(function (rows: string | any[]) {
-            let userForLtiUserId = null;
-            if (rows.length) {
-              userForLtiUserId = rows[0];
-              winston.log(
-                "info",
-                "got user for lti_user_id:" + JSON.stringify(userForLtiUserId)
-              );
-            }
-            return userForLtiUserId;
-          })
-      );
-    }
-
-    if (req.p.lis_result_sourcedid) {
-      addCanvasAssignmentConversationCallbackParamsIfNeeded(
-        req.p.user_id,
-        req.p.context_id,
-        req.p.custom_canvas_assignment_id,
-        req.p.tool_consumer_instance_guid,
-        req.p.lis_outcome_service_url,
-        req.p.lis_result_sourcedid,
-        JSON.stringify(req.body)
-      )
-        .then(function () {
-          winston.log("info", "grading info added");
-        })
-        .catch(function (err: any) {
-          winston.log("info", "grading info error ");
-          winston.log("info", err);
-        });
-    }
-    function constructConversationUrl(zid: any) {
-      // sweet! the instructor has created the conversation. send students here. (instructors too)
-      return getZinvite(zid).then(function (zinvite: string) {
-        return (
-          getServerNameWithProtocol(req) +
-          "/" +
-          zinvite +
-          "/" +
-          encodeParams({
-            forceEmbedded: true,
-            // this token is used to support cookie-less participation, mainly needed within Canvas's Android webview
-            xPolisLti: createPolisLtiToken(
-              req.p.tool_consumer_instance_guid,
-              req.p.user_id
-            ), // x-polis-lti header
-          })
-        );
-      });
-    }
-
-    // pgQueryP("insert into lti_single_assignment_callback_info (lti_user_id, lti_context_id, lis_outcome_service_url, lis_result_sourcedid, custom_canvas_assignment_id, tool_consumer_instance_guid, stringified_json_of_post_content) values ($1, $2, $3, $4, $5, $6, $7);", [
-    //     req.p.lti_user_id,
-    //     req.p.lti_context_id,
-    //     req.p.lis_outcome_service_url,
-    //     req.p.lis_result_sourcedid,
-    //     req.p.custom_canvas_assignment_id,
-    //     req.p.tool_consumer_instance_guid,
-    //     JSON.stringify(req.body),
-    // ]).thennnnn
-
-    Promise.all([
-      getCanvasAssignmentInfo(
-        req.p.tool_consumer_instance_guid,
-        req.p.context_id,
-        req.p.custom_canvas_assignment_id
-      ),
-      getPolisUserForLtiUser(),
-    ])
-      .then(function (results: any[]) {
-        let infos = results[0];
-        let exists = infos && infos.length;
-        let info = infos[0];
-
-        let user = results[1];
-
-        if (exists) {
-          return constructConversationUrl(info.zid)
-            .then(function (url: any) {
-              if (user) {
-                // we're in business, user can join the conversation
-                res.redirect(url);
-              } else {
-                // not linked yet.
-                // send them to an auth page, which should do the linkage, then send them to inbox with the funky params...
-
-                // you are signed in, but not linked to the signed in user
-                // WARNING! CLEARING COOKIES - since it's difficult to have them click a link to sign out, and then re-initiate the LTI POST request from Canvas, just sign them out now and move on.
-                clearCookies(req, res);
-                winston.log("info", "lti_linkage didnt exist");
-                // Have them sign in again, since they weren't linked.
-                // NOTE: this could be streamlined by showing a sign-in page that also says "you are signed in as foo, link account foo? OR sign in as someone else"
-                //
-                // (parameter) res: {
-                //     redirect: (arg0: string) => void;
-                //     set: (arg0: {
-                //         "Content-Type": string;
-                //     }) => void;
-                //     send: (arg0: string) => void;
-                // }
-                // Argument of type '{ redirect: (arg0: string) => void; set: (arg0: { "Content-Type": string; }) => void; send: (arg0: string) => void; }' is not assignable to parameter of type '{ set: (arg0: { "Content-Type": string; }) => void; status: (arg0: number) => { (): any; new (): any; send: { (arg0: string): void; new (): any; }; }; }'.ts(2345)
-                //
-                // @ts-ignore
-                renderLtiLinkagePage(req, res, url);
-              }
-            })
-            .catch(function (err: any) {
-              fail(res, 500, "polis_err_lti_generating_conversation_url", err);
-            });
-        } else {
-          // uh oh, not ready. If this is an instructor, we'll send them to the create/conversation page.
-          if (isInstructor) {
-            if (user) {
-              res.redirect(
-                getServerNameWithProtocol(req) +
-                  "/conversation/create/" +
-                  encodeParams({
-                    forceEmbedded: true,
-                    // this token is used to support cookie-less participation, mainly needed within Canvas's Android webview. It is needed to ensure the canvas user is bound to the polis user, regardless of who is signed in on pol.is
-                    xPolisLti: createPolisLtiToken(
-                      req.p.tool_consumer_instance_guid,
-                      req.p.user_id
-                    ), // x-polis-lti header
-                    tool_consumer_instance_guid:
-                      req.p.tool_consumer_instance_guid,
-                    context: context_id,
-                    custom_canvas_assignment_id:
-                      req.p.custom_canvas_assignment_id,
-                  })
-              );
-            } else {
-              let url =
-                getServerNameWithProtocol(req) +
-                "/conversation/create/" +
-                encodeParams({
-                  forceEmbedded: true,
-                  tool_consumer_instance_guid:
-                    req.p.tool_consumer_instance_guid,
-                  context: context_id,
-                  custom_canvas_assignment_id:
-                    req.p.custom_canvas_assignment_id,
-                });
-              // Argument of type '{ redirect: (arg0: string) => void; set: (arg0: { "Content-Type": string; }) => void; send: (arg0: string) => void; }' is not assignable to parameter of type '{ set: (arg0: { "Content-Type": string; }) => void; status: (arg0: number) => { (): any; new (): any; send: { (arg0: string): void; new (): any; }; }; }'.
-              //   Property 'status' is missing in type '{ redirect: (arg0: string) => void; set: (arg0: { "Content-Type": string; }) => void; send: (arg0: string) => void; }' but required in type '{ set: (arg0: { "Content-Type": string; }) => void; status: (arg0: number) => { (): any; new (): any; send: { (arg0: string): void; new (): any; }; }; }'.ts(2345)
-              // @ts-ignore
-              renderLtiLinkagePage(req, res, url);
-            }
-          } else {
-            // double uh-oh, a student is seeing this before the instructor created a conversation...
-
-            // TODO email polis team, email instructor?
-            // TODO or just auto-generate a conversation for the instructor, and have no topic and description, then show that?
-            // TODO or make a dummy "not ready yet" page
-
-            console.error(
-              "Student saw conversation before it was set up. For instructor with key: oauth_consumer_key: " +
-                req.p.oauth_consumer_key
-            );
-            res.set({
-              "Content-Type": "text/html",
-            });
-            res.send(
-              '<head><meta name="viewport" content="width=device-width, initial-scale=1;"></head>' +
-                "<body><h1 style='max-width:320px'>Sorry, the pol.is conversation has not been created yet. Please try back later.</h1></body>"
-            );
-          }
-        }
-      })
-      .catch(function (err: any) {
-        fail(res, 500, "polis_err_checking_grading_context", err);
-      });
-
-    // store info about class, if not there already
-    // pgQueryP("insert into canvas_assignment_conversation_info (
-
-    // we could store them all
-    // we could upsert
-    // but we'll need to know the uid to post the grades when the vote happens.
-    // ON VOTE?
-    // nope. Canvas sends them an email. It would be weird to vote once and then get an email saying you have 10/10.
-    //check if conversation has context
-    // if so, fetch lti_user_id for the uid and the correct tool_consumer_instance_guid (TODO)
-    // lti_single_assignment_callback_info for the context, custom_canvas_assignment_id, lti_user_id
-    // and do the post with that info...
-
-    // ON CLOSE?
-    // teacher has to manually close the conversation.
-    // we need to provide UI for that. either in the custom inbox, or in the conversation itself.
-    // so, on conversation close... we should keep "canvas_assignment_conversation_info": a many-to-many mapping of {zid <=> (tool_consumer_instance_guid, lti_context_id, custom_canvas_assignment_id)}
-    // so iterate over all triples for the zid, and find the corresponding callback record, and make a signed request for each student's record.
-    // Note that if the student somehow joined the conversation, but not through canvas, then they can't get credit.
-    // wait! how do we know what the conversation should have for topic / description?
-  }
-
-  function handle_GET_setup_assignment_xml(
-    req: any,
-    res: {
-      set: (arg0: string, arg1: string) => void;
-      status: (
-        arg0: number
-      ) => {
-        (): any;
-        new (): any;
-        send: { (arg0: string): void; new (): any };
-      };
-    }
-  ) {
-    let xml =
-      "" +
-      '<cartridge_basiclti_link xmlns="http://www.imsglobal.org/xsd/imslticc_v1p0" xmlns:blti="http://www.imsglobal.org/xsd/imsbasiclti_v1p0" xmlns:lticm="http://www.imsglobal.org/xsd/imslticm_v1p0" xmlns:lticp="http://www.imsglobal.org/xsd/imslticp_v1p0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/imslticc_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticc_v1p0.xsd http://www.imsglobal.org/xsd/imsbasiclti_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imsbasiclti_v1p0.xsd http://www.imsglobal.org/xsd/imslticm_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticm_v1p0.xsd http://www.imsglobal.org/xsd/imslticp_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticp_v1p0.xsd">' +
-      "<blti:title>Polis Setup Assignment</blti:title>" +
-      "<blti:description>based on Minecraft LMS integration</blti:description>" +
-      "<blti:icon>" +
-      "http://minecraft.inseng.net:8133/minecraft-16x16.png" +
-      "</blti:icon>" +
-      "<blti:launch_url>https://preprod.pol.is/api/v3/LTI/setup_assignment</blti:launch_url>" +
-      "<blti:custom>" +
-      '<lticm:property name="custom_canvas_xapi_url">$Canvas.xapi.url</lticm:property>' +
-      "</blti:custom>" +
-      '<blti:extensions platform="canvas.instructure.com">' +
-      '<lticm:property name="tool_id">polis_lti</lticm:property>' +
-      '<lticm:property name="privacy_level">public</lticm:property>' +
-      // homework 1 (link accounts)
-      // https://canvas.instructure.com/doc/api/file.homework_submission_tools.html
-      '<lticm:options name="homework_submission">' +
-      // This is the URL that will be POSTed to when users click the button in any rich editor.
-      '<lticm:property name="url">https://preprod.pol.is/api/v3/LTI/setup_assignment</lticm:property>' +
-      '<lticm:property name="icon_url">' +
-      "http://minecraft.inseng.net:8133/minecraft-16x16.png" +
-      "</lticm:property>" +
-      '<lticm:property name="text">polis accout setup (first assignment)</lticm:property>' +
-      '<lticm:property name="selection_width">400</lticm:property>' +
-      '<lticm:property name="selection_height">300</lticm:property>' +
-      '<lticm:property name="enabled">true</lticm:property>' +
-      "</lticm:options>" +
-      // nav
-      // '<lticm:options name="course_navigation">' +
-      //     '<lticm:property name="url">https://preprod.pol.is/api/v3/LTI/setup_assignment</lticm:property>' +
-      //     '<lticm:property name="text">polis setup from nav</lticm:property>' +
-      //     '<lticm:property name="visibility">public</lticm:property>' +
-      //     '<lticm:property name="default">enabled</lticm:property>' +
-      //     '<lticm:property name="enabled">true</lticm:property>' +
-      // '</lticm:options>' +
-
-      "</blti:extensions>" +
-      '<cartridge_bundle identifierref="BLTI001_Bundle"/>' +
-      '<cartridge_icon identifierref="BLTI001_Icon"/>' +
-      "</cartridge_basiclti_link>";
-
-    res.set("Content-Type", "text/xml");
-    res.status(200).send(xml);
-  }
-  function handle_GET_conversation_assigmnent_xml(
-    req: any,
-    res: {
-      set: (arg0: string, arg1: string) => void;
-      status: (
-        arg0: number
-      ) => {
-        (): any;
-        new (): any;
-        send: { (arg0: string): void; new (): any };
-      };
-    }
-  ) {
-    let serverName = getServerNameWithProtocol(req);
-
-    let xml =
-      "" +
-      '<cartridge_basiclti_link xmlns="http://www.imsglobal.org/xsd/imslticc_v1p0" xmlns:blti="http://www.imsglobal.org/xsd/imsbasiclti_v1p0" xmlns:lticm="http://www.imsglobal.org/xsd/imslticm_v1p0" xmlns:lticp="http://www.imsglobal.org/xsd/imslticp_v1p0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.imsglobal.org/xsd/imslticc_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticc_v1p0.xsd http://www.imsglobal.org/xsd/imsbasiclti_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imsbasiclti_v1p0.xsd http://www.imsglobal.org/xsd/imslticm_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticm_v1p0.xsd http://www.imsglobal.org/xsd/imslticp_v1p0 http://www.imsglobal.org/xsd/lti/ltiv1p0/imslticp_v1p0.xsd">' +
-      "<blti:title>Polis Conversation Setup</blti:title>" +
-      "<blti:description>Polis conversation</blti:description>" +
-      // '<blti:icon>' +
-      // 'http://minecraft.inseng.net:8133/minecraft-16x16.png' +
-      // '</blti:icon>' +
-      "<blti:launch_url>" +
-      serverName +
-      "/api/v3/LTI/conversation_assignment</blti:launch_url>" +
-      "<blti:custom>" +
-      '<lticm:property name="custom_canvas_xapi_url">$Canvas.xapi.url</lticm:property>' +
-      "</blti:custom>" +
-      '<blti:extensions platform="canvas.instructure.com">' +
-      '<lticm:property name="tool_id">polis_conversation_lti</lticm:property>' +
-      '<lticm:property name="privacy_level">public</lticm:property>' +
-      // homework 2 (polis discussions)
-      // https://canvas.instructure.com/doc/api/file.homework_submission_tools.html
-      '<lticm:options name="homework_submission">' +
-      // '<lticm:property name="url">https://preprod.pol.is/api/v3/LTI/homework_submission</lticm:property>' +
-      '<lticm:property name="url">' +
-      serverName +
-      "/api/v3/LTI/conversation_assignment</lticm:property>" + // ?
-      '<lticm:property name="icon_url">' +
-      "http://minecraft.inseng.net:8133/minecraft-16x16.png" +
-      "</lticm:property>" +
-      '<lticm:property name="text">polis setup</lticm:property>' +
-      '<lticm:property name="selection_width">400</lticm:property>' +
-      '<lticm:property name="selection_height">300</lticm:property>' +
-      '<lticm:property name="enabled">true</lticm:property>' +
-      "</lticm:options>" +
-      "</blti:extensions>" +
-      '<cartridge_bundle identifierref="BLTI001_Bundle"/>' +
-      '<cartridge_icon identifierref="BLTI001_Icon"/>' +
-      "</cartridge_basiclti_link>";
-
-    res.set("Content-Type", "text/xml");
-    res.status(200).send(xml);
-  }
-  function handle_GET_canvas_app_instructions_png(
-    req: { headers?: { [x: string]: string } },
-    res: any
-  ) {
-    let path = "/landerImages/";
-    if (/Android/.exec(req?.headers?.["user-agent"] || "")) {
-      path += "app_instructions_android.png";
-    } else if (
-      /iPhone.*like Mac OS X/.exec(req?.headers?.["user-agent"] || "")
-    ) {
-      path += "app_instructions_ios.png";
-    } else {
-      path += "app_instructions_blank.png";
-    }
-    let doFetch = makeFileFetcher(hostname, portForParticipationFiles, path, {
-      "Content-Type": "image/png",
-    });
-    //   Argument of type '{ headers?: { [x: string]: string; } | undefined; }' is not assignable to parameter of type '{ headers?: { host: any; } | undefined; path: any; pipe: (arg0: any) => void; }'.
-    // Type '{ headers?: { [x: string]: string; } | undefined; }' is missing the following properties from type '{ headers?: { host: any; } | undefined; path: any; pipe: (arg0: any) => void; }': path, pipets(2345)
-    // @ts-ignore
-    doFetch(req, res);
-  }
-
   // function handle_POST_users_invite(req, res) {
   //     let owner = req.p.uid;
   //     let xids = req.p.xids;
@@ -15241,11 +12815,9 @@ Thanks for using Polis!
   //             let xid = escapeLiteral(pair[0]);
   //             let suzinvite = escapeLiteral(pair[1]);
   //             let statement = "("+ suzinvite + ", " + xid + "," + zid+","+owner+")";
-  //             winston.log("info",statement);
   //             return statement;
   //         });
   //         let query = "INSERT INTO suzinvites (suzinvite, xid, zid, owner) VALUES " + valuesStatements.join(",") + ";";
-  //         winston.log("info",query);
   //         pgQuery(query, [], function(err, results) {
   //             if (err) { fail(res, 500, "polis_err_saving_invites", err); return; }
   //             getZinvite(zid).then(function(conversation_id) {
@@ -15266,7 +12838,7 @@ Thanks for using Polis!
   //     });
   // }
 
-  function hangle_GET_testConnection(
+  function handle_GET_testConnection(
     req: any,
     res: {
       status: (
@@ -15283,7 +12855,7 @@ Thanks for using Polis!
     });
   }
 
-  function hangle_GET_testDatabase(
+  function handle_GET_testDatabase(
     req: any,
     res: {
       status: (
@@ -15330,7 +12902,7 @@ Thanks for using Polis!
       "Thank you for using Polis\n";
 
     return sendTextEmail(
-      POLIS_FROM_ADDRESS,
+      polisFromAddress,
       email,
       "Join the pol.is conversation!",
       body
@@ -15377,14 +12949,12 @@ Thanks for using Polis!
               let suzinvite = escapeLiteral(pair[1]);
               let statement =
                 "(" + suzinvite + ", " + xid + "," + zid + "," + owner + ")";
-              winston.log("info", statement);
               return statement;
             });
             let query =
               "INSERT INTO suzinvites (suzinvite, xid, zid, owner) VALUES " +
               valuesStatements.join(",") +
               ";";
-            winston.log("info", query);
             pgQuery(query, [], function (err: any, results: any) {
               if (err) {
                 fail(res, 500, "polis_err_saving_invites", err);
@@ -15497,7 +13067,10 @@ Thanks for using Polis!
                   function (err: any, result: { rows: { zid: any }[] }) {
                     if (err) {
                       if (isDuplicateKey(err)) {
-                        yell(err);
+                        logger.error(
+                          "polis_err_create_implicit_conv_duplicate_key",
+                          err
+                        );
                         reject("polis_err_create_implicit_conv_duplicate_key");
                       } else {
                         reject("polis_err_create_implicit_conv_db");
@@ -15582,7 +13155,7 @@ Thanks for using Polis!
       let emails = _.pluck(rows, "email");
 
       return sendMultipleTextEmails(
-        POLIS_FROM_ADDRESS,
+        polisFromAddress,
         emails,
         "Polis conversation created",
         body
@@ -15755,16 +13328,11 @@ Thanks for using Polis!
     }
     o.socialbtn_type = req.p.show_share ? 1 : 0;
     // Set stuff in cookies to be retrieved when POST participants is called.
-    let setOnPolisDomain = !domainOverride;
-    let origin = req?.headers?.origin || "";
-    if (setOnPolisDomain && origin.match(/^http:\/\/localhost:[0-9]{4}/)) {
-      setOnPolisDomain = false;
-    }
     if (req.p.referrer) {
-      setParentReferrerCookie(req, res, setOnPolisDomain, req.p.referrer);
+      setParentReferrerCookie(req, res, req.p.referrer);
     }
     if (req.p.parent_url) {
-      setParentUrlCookie(req, res, setOnPolisDomain, req.p.parent_url);
+      setParentUrlCookie(req, res, req.p.parent_url);
     }
 
     function appendParams(url: string) {
@@ -15854,11 +13422,10 @@ Thanks for using Polis!
                 seedUrl
               )
                 .then(function () {
-                  winston.log("info", "email sent");
+                  logger.info("email sent");
                 })
                 .catch(function (err: any) {
-                  console.error("email fail");
-                  console.error(err);
+                  logger.error("email fail", err);
                 });
 
               url = appendParams(url);
@@ -15901,21 +13468,14 @@ Thanks for using Polis!
     let hostname = buildStaticHostname(req, res);
     if (!hostname) {
       let host = req?.headers?.host || "";
-      let re = new RegExp(process.env.SERVICE_HOSTNAME + "$");
+      let re = new RegExp(Config.getServerHostname() + "$");
       if (host.match(re)) {
         // don't alert for this, it's probably DNS related
         // TODO_SEO what should we return?
-        userFail(
-          res,
-          500,
-          "polis_err_proxy_serving_to_domain",
-          new Error(host)
-        );
+        fail(res, 500, "polis_err_proxy_serving_to_domain", new Error(host));
       } else {
         fail(res, 500, "polis_err_proxy_serving_to_domain", new Error(host));
       }
-      console.error(req?.headers?.host);
-      console.error(req.path);
       return;
     }
 
@@ -15923,14 +13483,14 @@ Thanks for using Polis!
       addStaticFileHeaders(res);
     }
     // if (/MSIE [^1]/.exec(req?.headers?.['user-agent'])) { // older than 10
-    //     // http.get(process.env.STATIC_FILES_HOST + "/unsupportedBrowser.html", function(page) {
+    //     // http.get(Config.staticFilesHost + "/unsupportedBrowser.html", function(page) {
     //     //     res.status(200).end(page);
     //     // }).on('error', function(e) {
     //     //     res.status(200).end("Apollogies, this browser is not supported. We recommend Chrome, Firefox, or Safari.");
     //     // });
     //     getStaticFile("./unsupportedBrowser.html", res);
     // } else {
-    let port = process.env.STATIC_FILES_PORT;
+    let port = Config.staticFilesClientPort;
     // set the host header too, since S3 will look at that (or the routing proxy will patch up the request.. not sure which)
     if (req && req.headers && req.headers.host) req.headers.host = hostname;
     routingProxy.web(req, res, {
@@ -15944,7 +13504,7 @@ Thanks for using Polis!
 
   function buildStaticHostname(req: { headers?: { host: string } }, res: any) {
     if (devMode || domainOverride) {
-      return process.env.STATIC_FILES_HOST;
+      return Config.staticFilesHost;
     } else {
       let origin = req?.headers?.host;
       // Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ "pol.is": string; "embed.pol.is": string; "survey.pol.is": string; "preprod.pol.is": string; }'.
@@ -15954,10 +13514,10 @@ Thanks for using Polis!
         if (hasWhitelistMatches(origin || "")) {
           // Use the prod bucket for non pol.is domains
           return (
-            whitelistedBuckets["pol.is"] + "." + process.env.STATIC_FILES_HOST
+            whitelistedBuckets["pol.is"] + "." + Config.staticFilesHost
           );
         } else {
-          console.error(
+          logger.error(
             "got request with host that's not whitelisted: (" +
               req?.headers?.host +
               ")"
@@ -15969,7 +13529,7 @@ Thanks for using Polis!
       // No index signature with a parameter of type 'string' was found on type '{ "pol.is": string; "embed.pol.is": string; "survey.pol.is": string; "preprod.pol.is": string; }'.ts(7053)
       // @ts-ignore
       origin = whitelistedBuckets[origin || ""];
-      return origin + "." + process.env.STATIC_FILES_HOST;
+      return origin + "." + Config.staticFilesHost;
     }
   }
 
@@ -16039,7 +13599,7 @@ Thanks for using Polis!
 
   function makeFileFetcher(
     hostname?: string,
-    port?: string,
+    port?: string | number,
     path?: string,
     headers?: { "Content-Type": string },
     preloadData?: { conversation?: ConversationType }
@@ -16051,8 +13611,6 @@ Thanks for using Polis!
       let hostname = buildStaticHostname(req, res);
       if (!hostname) {
         fail(res, 500, "polis_err_file_fetcher_serving_to_domain");
-        console.error(req?.headers?.host);
-        console.error(req.path);
         return;
       }
       // pol.is.s3-website-us-east-1.amazonaws.com
@@ -16061,7 +13619,7 @@ Thanks for using Polis!
       // TODO https - buckets would need to be renamed to have dashes instead of dots.
       // http://stackoverflow.com/questions/3048236/amazon-s3-https-ssl-is-it-possible
       let url = "http://" + hostname + ":" + port + path;
-      winston.log("info", "fetch file from " + url);
+      logger.info("fetch file from " + url);
       let x = request(url);
       req.pipe(x);
       if (!_.isUndefined(preloadData)) {
@@ -16138,12 +13696,12 @@ Thanks for using Polis!
   }
 
   // serve up index.html in response to anything starting with a number
-  let hostname = process.env.STATIC_FILES_HOST;
-  let portForParticipationFiles = process.env.STATIC_FILES_PORT;
-  let portForAdminFiles = process.env.STATIC_FILES_ADMINDASH_PORT;
+  let hostname: string = Config.staticFilesHost;
+  let staticFilesClientPort: number = Config.staticFilesClientPort;
+  let staticFilesAdminPort: number = Config.staticFilesAdminPort;
   let fetchUnsupportedBrowserPage = makeFileFetcher(
     hostname,
-    portForParticipationFiles,
+    staticFilesClientPort,
     "/unsupportedBrowser.html",
     {
       "Content-Type": "text/html",
@@ -16157,7 +13715,7 @@ Thanks for using Polis!
       end: () => any;
     },
     preloadData: { conversation?: ConversationType },
-    port: string | undefined,
+    port: string | number | undefined,
     buildNumber?: string | null | undefined
   ) {
     let headers = {
@@ -16173,7 +13731,7 @@ Thanks for using Polis!
     // Argument of type '{ path: string; headers?: { host: string; } | undefined; }' is not assignable to parameter of type 'Req'.
     //  Property 'cookies' is missing in type '{ path: string; headers?: { host: string; } | undefined; }' but required in type 'Req'.ts(2345)
     // @ts-ignore
-    setCookieTestCookie(req, res, shouldSetCookieOnPolisDomain(req));
+    setCookieTestCookie(req, res);
 
     if (devMode) {
       buildNumber = null;
@@ -16220,7 +13778,7 @@ Thanks for using Polis!
   function ifDefinedFirstElseSecond(first: any, second: boolean) {
     return _.isUndefined(first) ? second : first;
   }
-  let fetch404Page = makeFileFetcher(hostname, portForAdminFiles, "/404.html", {
+  let fetch404Page = makeFileFetcher(hostname, staticFilesAdminPort, "/404.html", {
     "Content-Type": "text/html",
   });
 
@@ -16228,7 +13786,7 @@ Thanks for using Polis!
     req: { path: string; query?: { build: any } },
     res: any
   ) {
-    console.log("fetchIndexForConversation", req.path);
+    logger.debug("fetchIndexForConversation", req.path);
     let match = req.path.match(/[0-9][0-9A-Za-z]+/);
     let conversation_id: any;
     if (match && match.length) {
@@ -16237,7 +13795,7 @@ Thanks for using Polis!
     let buildNumber: null = null;
     if (req?.query?.build) {
       buildNumber = req.query.build;
-      console.log("loading_build", buildNumber);
+      logger.debug("loading_build", buildNumber);
     }
 
     setTimeout(function () {
@@ -16246,22 +13804,20 @@ Thanks for using Polis!
       // client requests these later.
       // TODO actually store these values in a cache that is shared between
       // the servers, probably just in the db.
-      getTwitterShareCountForConversation(conversation_id).catch(function (
-        err: string
-      ) {
-        console.log(
-          "fetchIndexForConversation/getTwitterShareCountForConversation err " +
-            err
-        );
-      });
-      getFacebookShareCountForConversation(conversation_id).catch(function (
-        err: string
-      ) {
-        console.log(
-          "fetchIndexForConversation/getFacebookShareCountForConversation err " +
-            err
-        );
-      });
+      if (Config.twitterConsumerKey) {
+        getTwitterShareCountForConversation(conversation_id).catch(function (
+          err: string
+        ) {
+          logger.error("polis_err_fetching_twitter_share_count", err);
+        });
+      }
+      if (Config.fbAppId) {
+        getFacebookShareCountForConversation(conversation_id).catch(function (
+          err: string
+        ) {
+          logger.error("polis_err_fetching_facebook_share_count", err);
+        });
+      }
     }, 100);
 
     doGetConversationPreloadInfo(conversation_id)
@@ -16274,21 +13830,21 @@ Thanks for using Polis!
           req,
           res,
           preloadData,
-          portForParticipationFiles,
+          staticFilesClientPort,
           buildNumber
         );
       })
       .catch(function (err: any) {
+        logger.error("polis_err_fetching_conversation_info", err);
         // Argument of type '{ path: string; query?: { build: any; } | undefined; }' is not assignable to parameter of type '{ headers?: { host: any; } | undefined; path: any; pipe: (arg0: any) => void; }'.
         //   Property 'pipe' is missing in type '{ path: string; query?: { build: any; } | undefined; }' but required in type '{ headers?: { host: any; } | undefined; path: any; pipe: (arg0: any) => void; }'.ts(2345)
         // @ts-ignore
         fetch404Page(req, res);
-        // fail(res, 500, "polis_err_fetching_conversation_info2", err);
       });
   }
   let fetchIndexForAdminPage = makeFileFetcher(
     hostname,
-    portForAdminFiles,
+    staticFilesAdminPort,
     "/index_admin.html",
     {
       "Content-Type": "text/html",
@@ -16296,7 +13852,7 @@ Thanks for using Polis!
   );
   let fetchIndexForReportPage = makeFileFetcher(
     hostname,
-    portForAdminFiles,
+    staticFilesAdminPort,
     "/index_report.html",
     {
       "Content-Type": "text/html",
@@ -16365,7 +13921,6 @@ Thanks for using Polis!
       ) => { (): any; new (): any; end: { (): void; new (): any } };
     }
   ) {
-    console.log("handle_GET_twitter_image", req.p.id);
     getTwitterUserInfo(
       {
         twitter_user_id: req.p.id,
@@ -16402,15 +13957,12 @@ Thanks for using Polis!
             finished = true;
             res.writeHead(504);
             res.end("request timed out");
-            console.log("twitter_image timeout");
+            logger.debug("twitter_image timeout");
           }
         }, 9999);
       })
-      .catch(function (err: { stack: any }) {
-        console.error("polis_err_missing_twitter_image", err);
-        if (err && err.stack) {
-          console.error(err.stack);
-        }
+      .catch(function (err: any) {
+        logger.error("polis_err_missing_twitter_image", err);
         res.status(500).end();
       });
   }
@@ -16504,7 +14056,7 @@ Thanks for using Polis!
         }
         b = JSON.stringify(temp);
       }
-      winston.log("info", req.path + " " + b);
+      logger.debug("middleware_log_request_body", { path: req.path, body: b });
     } else {
       // don't log the route or params, since Heroku does that for us.
     }
@@ -16512,20 +14064,15 @@ Thanks for using Polis!
   }
 
   function middleware_log_middleware_errors(
-    err: { stack: any },
+    err: any,
     req: any,
     res: any,
-    next: (arg0?: { stack: any }) => void
+    next: (arg0?: any) => void
   ) {
     if (!err) {
       return next();
     }
-    winston.log("info", "error found in middleware");
-    console.error(err);
-    if (err && err.stack) {
-      console.error(err.stack);
-    }
-    yell(err);
+    logger.error("middleware_log_middleware_errors", err);
     next(err);
   }
 
@@ -16551,7 +14098,7 @@ Thanks for using Polis!
       addInRamMetric(path, time);
     }
   });
-  console.log("end initializePolisHelpers");
+  logger.debug("end initializePolisHelpers");
 
   const returnObject: any = {
     addCorsHeader,
@@ -16576,18 +14123,14 @@ Thanks for using Polis!
     makeFileFetcher,
     makeRedirectorTo,
     pidCache,
-    portForAdminFiles,
-    portForParticipationFiles,
+    staticFilesAdminPort,
+    staticFilesClientPort,
     proxy,
-    redirectIfApiDomain,
     redirectIfHasZidButNoConversationId,
     redirectIfNotHttps,
-    redirectIfWrongDomain,
     sendTextEmail,
     timeout,
-    winston,
     writeDefaultHead,
-    yell,
     middleware_check_if_options,
     middleware_log_middleware_errors,
     middleware_log_request_body,
@@ -16597,20 +14140,15 @@ Thanks for using Polis!
     handle_DELETE_metadata_questions,
     handle_GET_bid,
     handle_GET_bidToPid,
-    handle_GET_canvas_app_instructions_png,
-    handle_GET_changePlanWithCoupon,
     handle_GET_comments,
     handle_GET_comments_translations,
     handle_GET_conditionalIndexFetcher,
     handle_GET_contexts,
-    handle_GET_conversation_assigmnent_xml,
     handle_GET_conversationPreloadInfo,
     handle_GET_conversations,
     handle_GET_conversationsRecentActivity,
     handle_GET_conversationsRecentlyStarted,
     handle_GET_conversationStats,
-    handle_GET_createPlanChangeCoupon,
-    handle_GET_enterprise_deal_url,
     handle_GET_math_correlationMatrix,
     handle_GET_dataExport,
     handle_GET_dataExport_results,
@@ -16626,7 +14164,6 @@ Thanks for using Polis!
     handle_GET_localFile_dev_only,
     handle_GET_locations,
     handle_GET_logMaxmindResponse,
-    handle_GET_lti_oauthv1_credentials,
     handle_GET_math_pca,
     handle_GET_math_pca2,
     handle_GET_metadata,
@@ -16642,12 +14179,9 @@ Thanks for using Polis!
     handle_GET_perfStats,
     handle_GET_ptptois,
     handle_GET_reports,
-    handle_GET_setup_assignment_xml,
     handle_GET_snapshot,
-    handle_GET_stripe_account_connect,
-    handle_GET_stripe_account_connected_oauth_callback,
-    hangle_GET_testConnection,
-    hangle_GET_testDatabase,
+    handle_GET_testConnection,
+    handle_GET_testDatabase,
     handle_GET_tryCookie,
     handle_GET_twitter_image,
     handle_GET_twitter_oauth_callback,
@@ -16666,7 +14200,6 @@ Thanks for using Polis!
     handle_POST_auth_new,
     handle_POST_auth_password,
     handle_POST_auth_pwresettoken,
-    handle_POST_charge,
     handle_POST_comments,
     handle_POST_contexts,
     handle_POST_contributors,
@@ -16677,8 +14210,6 @@ Thanks for using Polis!
     handle_POST_domainWhitelist,
     handle_POST_einvites,
     handle_POST_joinWithInvite,
-    handle_POST_lti_conversation_assignment,
-    handle_POST_lti_setup_assignment,
     handle_POST_math_update,
     handle_POST_metadata_answers,
     handle_POST_metadata_questions,
@@ -16693,9 +14224,6 @@ Thanks for using Polis!
     handle_POST_sendCreatedLinkToEmail,
     handle_POST_sendEmailExportReady,
     handle_POST_stars,
-    handle_POST_stripe_cancel,
-    handle_POST_stripe_save_token,
-    handle_POST_stripe_upgrade,
     handle_POST_trashes,
     handle_POST_tutorial,
     handle_POST_upvotes,
