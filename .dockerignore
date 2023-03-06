@@ -1,0 +1,13 @@
+# Files.
+.editorconfig
+.env.example
+.gitattributes
+.gitignore
+.gitkeep
+docker-compose.yml
+README.md
+
+# Directories.
+docs
+scripts
+
