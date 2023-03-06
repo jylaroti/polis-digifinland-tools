@@ -1,3 +1,4 @@
 [submodule "polis"]
 	path = polis
 	url = https://github.com/compdemocracy/polis.git
+	branch = edge
