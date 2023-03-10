@@ -44,6 +44,27 @@ minikube delete --all --purge
 
 # GKE k8s
 
+## Build and push images to artifact registry:
+
+Script takes registry repository location and image tag as arguments.
+
+Example:
+```
+./scripts/docker_images-build-and-push.sh example.com/project/repository tag-name
+```
+
+
+Production:
+```
+./scripts/docker_images-build-and-push.sh europe-north1-docker.pkg.dev/polis-kokeilu-prod/polis-kokeilu-prod prod
+```
+
+Test:
+```
+./scripts/docker_images-build-and-push.sh europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test test
+```
+
+
 ## Set server and file-server autoscaling (HPA) manually
 ```
 kubectl autoscale deployment polis-server --cpu-percent=50 --min=2 --max=10
