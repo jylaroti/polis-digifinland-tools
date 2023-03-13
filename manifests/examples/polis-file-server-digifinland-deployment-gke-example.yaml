@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: polis-file-server
 data:
-  EMBED_SERVICE_HOSTNAME: "polis-test-gke.digifinland.dev"
+  EMBED_SERVICE_HOSTNAME: "example.digifinland.dev"
   FB_APP_ID: 
   PORT: "8080"
   REPORT_UPLOADER: "local"
@@ -29,7 +29,7 @@ spec:
         app: polis-file-server
     spec:
       containers:
-        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-file-server:test
+        - image: europe-north1-docker.pkg.dev/project/repository/polis-file-server:test
           imagePullPolicy: Always
           name: polis-file-server
           ports:

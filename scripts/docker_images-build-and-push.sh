@@ -1,23 +1,25 @@
 #!/bin/bash
+# usage: ./path_to_this_script example.com/project/repository tagname
 
-# usage: ./path_to_this_script env
-#         where env is: test or dev
+# Script takes registry repository location and image tag as arguments.
+# Example:
+# ./scripts/docker_images-build-and-push.sh example.com/project/repository tagname
 
 # before running, first authenticate and configure gcloud:
 # gcloud auth login
-# gcloud auth configure-docker europe-north1-docker.pkg.dev
-# gcloud config set project polis-kokeilu
+# gcloud auth configure-docker registry-domain.example
+# gcloud config set project polis-gcp-project-name-example
 
-cd ../polis/
-docker build . -f file-server/Dockerfile -t europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-file-server:$1
+cd ./polis/
+docker build . -f file-server/Dockerfile -t $1/polis-file-server:$2
 
 cd ./math/
-docker build . -t europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-math:$1
+docker build . -t $1/polis-math:$2
 
 cd ../server/
-docker build . -t europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-server:$1
+docker build . -t $1/polis-server:$2
 
 # push images
-docker push europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-file-server:$1
-docker push europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-math:$1
-docker push europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-server:$1
+docker push $1/polis-file-server:$2
+docker push $1/polis-math:$2
+docker push $1/polis-server:$2

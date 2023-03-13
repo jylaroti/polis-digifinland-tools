@@ -3,7 +3,6 @@
 #         where env is: test or dev
 
 # stop containers
-cd ../polis/
 DOCKER_ENV=$1 docker compose -f docker-compose-digifinland.yml --env-file digifinland-$1.env down
 
 # list running containers

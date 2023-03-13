@@ -4,112 +4,107 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
 
 ## Initialization
 
-1. Create a suitable working directory.
 
-2. Clone Polis repository into working dir. Also fix line endings with autocrlf.
-
-    ```
-    git config --global core.autocrlf true
-    git clone https://github.com/compdemocracy/polis.git
-    ```
-
-3. Clone this repository into working dir.
+1. Clone this repository.
 
     ```
     git clone git@github.com:polis-digifinland-tools/polis-digifinland-tools.git
     ```
 
+    Optionally, set autocrlf if you encounter issues line endings:
 
-4. Working dir should now contain directories ./polis (polis official codebase) and ./polis-digifinland-tools (customizations and configurations for DigiFinland)
+    ```
+    git config --global core.autocrlf true
+    ```
 
-5. Add polis.local entry to your hosts file:
+2. Add `polis.local` entry to your local DNS or hosts file:
     ```
     127.0.0.1 	polis.local
     ```
 
-## Initialize database
+4. Copy `digifinland-example.env` to a new file called `digifinland-dev.env` and edit variables to match your environment.
 
-Uncomment postgres service in docker-compose-digifinland.yml before first run if you don't have existing database to work with. This runs default database initialization & migration SQL scripts from the project.
+## Quickstart to get dev env up with Docker Compose
 
-To simulate GKE + Cloud SQL (GCE VM) based deployment, install Postgres V13 on your host and use suitable test DB dump. See documentation about Test VM setup and Postgres configuration on Confluence workspace.
+1. Patch Polis codebase:
+    ```
+    ./scripts/patch-polis-codebase.sh
+    ```
+2. Edit env variables in `digifinland-dev.env` file.
 
-## Patch codebase
+3. Build and start containers with Docker Compose:
+    ```
+    ./scripts/docker-compose_build-and-deploy.sh dev
+    ```
+4. Browse to https://polis.local
 
-To patch polis with DigiFinland customizations and settings run patch script.
 
-This fetches latest Polis version from origin/edge branch and adds configs and patches. 
+# Database setup
+
+## Container
+
+Docker Compose deployment uses Postgres service defined in `docker-compose-digifinland.yml`. Default database initialization & migration SQL scripts are run on the first startup. 
+
+## Database on host for minikube (optional)
+
+If you like to use minikube and skaffold for testing Kubernetes deployment locally, either install database on your host or create a new StatefulSet deployment running database container based on `polis/server/Dockerfile-db`.
+To use database from host, install Postgres 13.7 and use a suitable test DB dump. Note that newer Postgres versions are not supported by Polis yet.
+Example configurations assume that database service is running at `host.docker.internal:5432`.
+
+# Patching Polis codebase
+
+To patch Polis submodule with DigiFinland customizations and settings, run patch script before building images or running docker compose.
+
+This fetches latest working Polis version from `origin/edge` branch and adds custom configs and patches. 
 
 ```
-cd ./polis-digifinland-tools/
 ./scripts/patch-polis-codebase.sh
 ```
 
-# Docker
+# Docker Compose
 
-## Setup nginx as local loadbalancer
+## Setup nginx as local loadbalancer (optional)
 
-To simulate GKE + Cloud SQL (GCE VM) based deployment, install nginx on your host and setup proxy with example site configurations provided in the `nginx` directory. See documentation about Test VM setup and Nginx configuration on Confluence workspace. 
+By default, configuration uses nginx container in a way it is used in the original codebase.
 
-You can also use nginx container in a way it is used in the original codebase.
+You can also use nginx on your host and setup load balancing proxy with example site configurations provided in the `nginx` directory.
 
 ## Run dev env with Docker Compose
 
 After patching, build and start all containers.
-Script takes env identifier (dev or test) as argument. 
+Script takes env identifier (dev) as argument. 
 
 ```
 ./scripts/docker-compose_build-and-deploy.sh dev
 ```
 
-## Scale polis-server
-```
-cd ./polis/
-DOCKER_ENV=dev docker compose -f docker-compose-digifinland.yml --env-file digifinland-dev.env up -d --no-deps --scale server=2
-```
-
 ## Stop and remove containers
 
-Takes env identifier (dev or test) as argument. 
+Takes env identifier (dev) as argument. 
 ```
 ./scripts/docker-compose_stop.sh dev
 ```
 
 # Minikube & Skaffold
 
-Kubernetes configuration files are in ./manifests directory.
+Kubernetes configuration files are in `./manifests` directory.
 See skaffold.yaml for artifacts and build config.
 
-Starts containers in local Minikube cluster, builds and deploys containers using Skaffold:
+Starts local Minikube cluster with metrics and ingress addons, and starts ingress tunnel:
 ```
-./scripts/k8s_start-local-minikube-and-run-skaffold.sh
-```
-
-Starts local Minikube cluster:
-```
-./scripts/k8s_start-local-minikube-and-run-skaffold.sh
+./scripts/k8s_start-local-minikube.sh
 ```
 
-Deploys prebuilt images from registry to local Minikube cluster with kubectl:
+Builds and deploys containers using Skaffold:
 ```
-./scripts/k8s_deploy-local.sh
-```
-
-# Test Server and GKE clusters
-
-For detailed documentation about setting up Test Server on GCE virtual machine manually, and setting up test and production GKE clusters, see documentation in Confluence workspace.
-
-Build images and push to test project's artifact repository:
-```
-./scripts/docker_images-build-and-push.sh test
+skaffold run
 ```
 
-Build images and push to production project's artifact repository:
+# Building and pushing images
+
+Builds and pushes images to artifact registry.
+
+Example:
 ```
-./scripts/docker_images-build-and-push-prod.sh prod
+./scripts/docker_images-build-and-push.sh example.com/project/repository tag-name
 ```
-
-
-
-# Tips and Troubleshooting
-
-See [Tips and troubleshooting](docs/tips-and-troubleshooting.md).

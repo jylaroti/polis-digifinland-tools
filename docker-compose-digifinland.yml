@@ -25,28 +25,26 @@ services:
     env_file: ./digifinland-${DOCKER_ENV:-dev}.env
     image: docker.io/compdem/polis-server:${DOCKER_ENV:-dev}
     build:
-      context: ./server
+      context: ./polis/server
       dockerfile: Dockerfile
       labels:
         polis_tag: ${DOCKER_ENV:-dev}
     depends_on:
-#      - "postgres"
+      - "postgres"
       - "file-server"
     networks:
       - "polis-net"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-# DF customization: 
-#   expose ports 5000-5008 (to allow usage of external nginx as load balancer)
-#   add deployment section to add replicas --> docker compose up for server needs to be run X amount of times for some reason to have all containers up and running (where X=number of replicas). 
-#   note that multiple replicas were only needed with VM based initial GCE test instance
     restart: on-failure
     ports:
-#     - 5000:5000
-      - target: 5000
-        published: 5000-5005
-        protocol: tcp
-        mode: ingress
+     - 5000:5000
+# if needed, comment out above port mapping and uncomment following to expose ports 5000-5005
+# this was needed for VM based setup to allow usage of external nginx as load balancer.
+#      - target: 5000
+#        published: 5000-5005
+#        protocol: tcp
+#        mode: ingress
     deploy:
       mode: replicated
       replicas: 1
@@ -64,11 +62,10 @@ services:
   math:
     container_name: polis-math
     image: docker.io/compdem/polis-math:${DOCKER_ENV:-dev}
-# DF customization: remove dep
-#    depends_on:
-#      - "postgres"
+    depends_on:
+      - "postgres"
     build:
-      context: ./math
+      context: ./polis/math
       labels:
         polis_tag: ${DOCKER_ENV:-dev}
     environment:
@@ -87,43 +84,60 @@ services:
         # max_attempts: 3
         window: 120s        
 
-# DF customization: remove pg container
-#  postgres:
-#    container_name: polis-postgres
-#    env_file: ./server/docker-db-dev.env
-#    image: docker.io/compdem/polis-postgres:${TAG}
-#    restart: always
-#    build:
-#      context: ./server
-#      dockerfile: Dockerfile-db
-#    networks:
-#      - "polis-net"
-#    volumes:
-#      - "backups:/backups"
-#      - "postgres:/var/lib/postgresql/data"
+  # postgres:
+  #   container_name: polis-postgres
+  #   env_file: ./polis/server/docker-db-dev.env
+  #   image: docker.io/compdem/polis-postgres:${TAG}
+  #   restart: always
+  #   build:
+  #     context: ./server
+  #     dockerfile: Dockerfile-db
+  #   networks:
+  #     - "polis-net"
+  #   volumes:
+  #     - "backups:/backups"
+  #     - "postgres:/var/lib/postgresql/data"
 
-# DF customization: remove nginx proxy container
-#  nginx-proxy:
-#    container_name: polis-nginx-proxy
-#    image: docker.io/compdem/polis-nginx-proxy:${TAG}
-#    build:
-#      context: ./file-server
-#      dockerfile: nginx.Dockerfile
-#    environment:
-#      - TAG
-#    depends_on:
-#      - "server"
-#    networks:
-#      - "polis-net"
-#    ports:
-#      - ${HTTP_PORT:-80}:${HTTP_PORT:-80}
-#      - ${HTTPS_PORT:-443}:${HTTPS_PORT:-443}
+  postgres:
+    image: docker.io/compdem/polis-postgres:${TAG:-dev}
+    restart: always
+    build:
+      context: ./polis/server
+      dockerfile: Dockerfile-db
+      labels:
+        polis_tag: ${TAG:-dev}
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:?error}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?error}
+      - POSTGRES_USER=${POSTGRES_USER:?error}
+    networks:
+      - "polis-net"
+    volumes:
+      - "backups:/backups"
+      - "postgres:/var/lib/postgresql/data"      
+
+  # nginx-proxy:
+  polis.local:
+    container_name: polis-nginx-proxy
+    image: docker.io/compdem/polis-nginx-proxy:${TAG}
+    build:
+      context: ./polis/file-server
+      dockerfile: nginx.Dockerfile
+    environment:
+      - TAG
+    depends_on:
+      - "server"
+    networks:
+      - "polis-net"
+    ports:
+      - ${HTTP_PORT:-80}:${HTTP_PORT:-80}
+      - ${HTTPS_PORT:-443}:${HTTPS_PORT:-443}
 
   file-server:
     # container_name: polis-file-server
     image: docker.io/compdem/polis-file-server:${DOCKER_ENV:-dev}
     build:
-      context: ./
+      context: ./polis/
       dockerfile: file-server/Dockerfile
       labels:
         polis_tag: ${DOCKER_ENV:-dev}

@@ -25,7 +25,7 @@ spec:
         app: polis-math
     spec:
       containers:
-        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-math:test
+        - image: europe-north1-docker.pkg.dev/project/repository/polis-math:test
           imagePullPolicy: Always
           name: polis-math
           envFrom:

@@ -15,6 +15,7 @@ data:
   REPORT_UPLOADER: "local"
   SCP_SUBDIR_PREPROD:
   SCP_SUBDIR_PROD:
+  SERVER_LOG_LEVEL: "debug"
   # (Deprecated) Settings for submitting web requests to the math worker.
   WEBSERVER_PASS: "ws-pass"
   WEBSERVER_USERNAME: "ws-user"

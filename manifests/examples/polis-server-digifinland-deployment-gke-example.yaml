@@ -15,6 +15,7 @@ data:
   REPORT_UPLOADER: "local"
   SCP_SUBDIR_PREPROD:
   SCP_SUBDIR_PROD:
+  SERVER_LOG_LEVEL: "info"
   # (Deprecated) Settings for submitting web requests to the math worker.
   WEBSERVER_PASS: "ws-pass"
   WEBSERVER_USERNAME: "ws-user"
@@ -38,7 +39,7 @@ data:
   ADMIN_EMAIL_DATA_EXPORT:
   ADMIN_EMAIL_EMAIL_TEST:
   ADMIN_EMAILS: "[]"
-  POLIS_FROM_ADDRESS: "Polis <polis@polis-test.digifinland.dev>"
+  POLIS_FROM_ADDRESS: "Polis <polis@example.digifinland.dev>"
 
   ###### BOOLEAN FLAGS ######
   # (false by default):
@@ -52,21 +53,21 @@ data:
   ###### CUSTOM URL/HOSTNAME SETTINGS ######
   # If you are running a development server anywhere other than localhost:80 or localhost:5000,
   # you need to update API_DEV_HOSTNAME and EMBED_SERVICE_HOSTNAME.
-  API_DEV_HOSTNAME: "polis.digifinland.fi"
+  API_DEV_HOSTNAME: "example.digifinland.dev"
   # If you are running polis on a custom domain, set both API_SERVER_HOSTNAME and DOMAIN_OVERRIDE
   # to the same value. In the future these will be combined into one setting.
-  API_SERVER_HOSTNAME: polis.digifinland.fi"
-  DOMAIN_OVERRIDE: "polis.digifinland.fi"
-  DOMAIN_WHITELIST_ITEM_01: "polis.local"
-  DOMAIN_WHITELIST_ITEM_02: "polis-test.digifinland.dev"
-  DOMAIN_WHITELIST_ITEM_03: "polis-test-gke.digifinland.dev"
-  DOMAIN_WHITELIST_ITEM_04: "polis.digifinland.fi"
+  API_SERVER_HOSTNAME: "example.digifinland.dev"
+  DOMAIN_OVERRIDE: "example.digifinland.dev"
+  DOMAIN_WHITELIST_ITEM_01: "example.digifinland.dev"
+  DOMAIN_WHITELIST_ITEM_02:
+  DOMAIN_WHITELIST_ITEM_03:
+  DOMAIN_WHITELIST_ITEM_04:
   DOMAIN_WHITELIST_ITEM_05:
   DOMAIN_WHITELIST_ITEM_06:
   DOMAIN_WHITELIST_ITEM_07:
   DOMAIN_WHITELIST_ITEM_08:
   # In production, should match API_SERVER_HOSTNAME or DOMAIN_OVERRIDE, if set:
-  EMBED_SERVICE_HOSTNAME: "polis-test-gke.digifinland.dev"
+  EMBED_SERVICE_HOSTNAME: "example.digifinland.dev"
   # Full hostname with protocol of your API server (used only for dev):
   REPORT_SERVICE_URL: "http://polis-server:5000"
   # STATIC_FILES_HOST: "file-server"
@@ -82,7 +83,7 @@ data:
   # GOOGLE_CREDENTIALS_BASE64 are given as Secret
   # GOOGLE_CREDENTIALS_BASE64: 
   GOOGLE_CREDS_STRINGIFIED:
-  MAILGUN_DOMAIN: "polis-test.digifinland.dev"
+  MAILGUN_DOMAIN: "example.digifinland.dev"
   MAILGUN_ENDPOINT: "api.eu.mailgun.net"
   MAXMIND_LICENSEKEY:
   MAXMIND_USERID:
@@ -112,7 +113,7 @@ spec:
         app: polis-server
     spec:
       containers:
-        - image: europe-north1-docker.pkg.dev/polis-kokeilu/polis-kokeilu-test/polis-server:test
+        - image: europe-north1-docker.pkg.dev/project/repository/polis-server:test
           imagePullPolicy: Always
           name: polis-server
           envFrom:
@@ -158,7 +159,7 @@ metadata:
   name: polis-test-managed-cert
 spec:
   domains:
-    - polis-test-gke.digifinland.dev
+    - example.digifinland.dev
 ---
 apiVersion: networking.gke.io/v1beta1
 kind: FrontendConfig
@@ -174,14 +175,14 @@ metadata:
   name: polis-server-cloudarmor
 spec:
   securityPolicy:
-    name: polis-kokeilu-test-ca-policies
+    name: polis-example-test-ca-policies
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: polis-server-ingress
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: polis-kokeilu-test-lb-global-static-ip
+    kubernetes.io/ingress.global-static-ip-name: polis-example-test-lb-global-static-ip
     networking.gke.io/managed-certificates: polis-test-managed-cert
     kubernetes.io/ingress.class: "gce"
     networking.gke.io/v1beta1.FrontendConfig: lb-http-to-https
@@ -192,7 +193,7 @@ spec:
       port:
         number: 5000
   rules:
-  - host: polis-test-gke.digifinland.dev
+  - host: example.digifinland.dev
     http:
       paths:
       - pathType: ImplementationSpecific

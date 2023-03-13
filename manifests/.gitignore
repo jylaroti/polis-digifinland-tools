@@ -1,3 +1,4 @@
 secrets/*
 gke-test/*
 gke-prod/*
+not_used/*

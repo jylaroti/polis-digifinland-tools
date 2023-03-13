@@ -8,27 +8,22 @@ build:
     push: false
   artifacts:
   - image: docker.io/compdem/polis-file-server
-    context: ../polis
+    context: ./polis
     docker:
-      dockerfile: ../polis/file-server/Dockerfile
+      dockerfile: ./polis/file-server/Dockerfile
   - image: docker.io/compdem/polis-math
-    context: ../polis/math
+    context: ./polis/math
     docker:
-      dockerfile: ../polis/math/Dockerfile
-#  - image: docker.io/compdem/polis-postgres
-#    context: ../polis/server
-#    docker:
-#      dockerfile: ../polis/server/Dockerfile-db
+      dockerfile: ./polis/math/Dockerfile
   - image: docker.io/compdem/polis-server
-    context: ../polis/server
+    context: ./polis/server
     docker:
       dockerfile: ../polis/server/Dockerfile
 deploy:
   kubectl:
     manifests:
-    - manifests/secrets/polis-server-digifinland-secret-local.yaml
-    - manifests/secrets/polis-math-digifinland-secret-local.yaml
-    - manifests/localbuild/polis-file-server.yaml
-    - manifests/localbuild/polis-math.yaml
-    - manifests/localbuild/polis-server.yaml
-#    - manifests/postgres.yaml
+    - manifests/local/polis-server-secret-example.yaml
+    - manifests/local/polis-math-secret-example.yaml
+    - manifests/local/polis-file-server.yaml
+    - manifests/local/polis-math.yaml
+    - manifests/local/polis-server.yaml
