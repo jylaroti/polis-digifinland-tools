@@ -11,7 +11,7 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
     git clone git@github.com:polis-digifinland-tools/polis-digifinland-tools.git
     ```
 
-    Optionally, set autocrlf if you encounter issues line endings:
+    Optionally, set autocrlf if you encounter issues with line endings:
 
     ```
     git config --global core.autocrlf true
@@ -24,7 +24,7 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
 
 4. Copy `digifinland-example.env` to a new file called `digifinland-dev.env` and edit variables to match your environment.
 
-## Quickstart to get dev env up with Docker Compose
+## Quickstart to get local environment up with Docker Compose
 
 1. Patch Polis codebase:
     ```
