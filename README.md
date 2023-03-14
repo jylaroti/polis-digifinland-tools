@@ -100,6 +100,11 @@ Builds and deploys containers using Skaffold:
 skaffold run
 ```
 
+Alternatively, to use image pruning, you can run:
+```
+skaffold dev --no-prune=false --cache-artifacts=false
+```
+
 # Building and pushing images
 
 Builds and pushes images to artifact registry.

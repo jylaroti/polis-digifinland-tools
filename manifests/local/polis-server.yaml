@@ -39,7 +39,7 @@ data:
   ADMIN_EMAIL_DATA_EXPORT:
   ADMIN_EMAIL_EMAIL_TEST:
   ADMIN_EMAILS: "[]"
-  POLIS_FROM_ADDRESS: "Polis <polis@polis-test.digifinland.dev>"
+  POLIS_FROM_ADDRESS: "Polis <polis@example.digifinland.dev>"
 
   ###### BOOLEAN FLAGS ######
   # (false by default):
@@ -60,9 +60,9 @@ data:
   API_SERVER_HOSTNAME: "polis.local"
   DOMAIN_OVERRIDE: "polis.local"
   DOMAIN_WHITELIST_ITEM_01: "polis.local"
-  DOMAIN_WHITELIST_ITEM_02: "polis-test.digifinland.dev"
-  DOMAIN_WHITELIST_ITEM_03: "polis-test-gke.digifinland.dev"
-  DOMAIN_WHITELIST_ITEM_04: "polis.digifinland.fi"
+  DOMAIN_WHITELIST_ITEM_02: 
+  DOMAIN_WHITELIST_ITEM_03: 
+  DOMAIN_WHITELIST_ITEM_04: 
   DOMAIN_WHITELIST_ITEM_05:
   DOMAIN_WHITELIST_ITEM_06:
   DOMAIN_WHITELIST_ITEM_07:
@@ -84,7 +84,7 @@ data:
   # GOOGLE_CREDENTIALS_BASE64 are given as Secret
   # GOOGLE_CREDENTIALS_BASE64: 
   GOOGLE_CREDS_STRINGIFIED:
-  MAILGUN_DOMAIN: "polis-test.digifinland.dev"
+  MAILGUN_DOMAIN: "example.digifinland.dev"
   MAILGUN_ENDPOINT: "api.eu.mailgun.net"
   MAXMIND_LICENSEKEY:
   MAXMIND_USERID:
@@ -137,7 +137,7 @@ metadata:
 spec:
   ports:
     - name: http
-      port: 80
+      port: 5000
       targetPort: 5000
   selector:
     app: polis-server
@@ -157,6 +157,6 @@ spec:
               service:
                 name: polis-server
                 port:
-                  number: 80
+                  number: 5000
 
 
