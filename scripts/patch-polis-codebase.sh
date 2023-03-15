@@ -27,11 +27,8 @@ git reset --hard origin/edge
 # Remove untracked files
 git clean -fdx
 
-# Configs from tools repo 
-# cd ../
+# Apply selected patches
 
-# apply selected patches
-# cd ./polis/
 # patch 0: fix math server entrypoint script line feeds
 dos2unix math/bin/run
 
