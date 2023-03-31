@@ -12,8 +12,11 @@ cd ./polis/
 # Download changes
 git fetch
 
+# To use latest version from git tracked submodule version, use:
+git reset --hard
+
 # To use latest version from edge branch, use:
-git reset --hard origin/edge
+#git reset --hard origin/edge
 
 # To get specific commits, use alternative commands below:
 # 
@@ -29,48 +32,48 @@ git clean -fdx
 
 # Apply selected patches
 
-# patch 0: fix math server entrypoint script line feeds
+# patch 0: fix math server entrypoint script line feeds, this is done to be sure the file is having Unix LF
 dos2unix math/bin/run
 
 # patch 1: enable sending with mailgun EU endpoint
 dos2unix ./server/src/email/senders.ts
-patch --no-backup-if-mismatch ./server/src/email/senders.ts < ../server/src/email/senders.ts.patch
+patch --no-backup-if-mismatch ./server/src/email/senders.ts < ../patches/server/src/email/senders.ts.patch
 
 # patch 2: fix client-report urls
-dos2unix ./client-report/src/util/url.js
-patch ./client-report/src/util/url.js <  ../client-report/src/util/url.js.patch
+#dos2unix ./client-report/src/util/url.js
+#patch ./client-report/src/util/url.js <  ../client-report/src/util/url.js.patch
 
 # patch 3: 
 #  - comment out block that saves encrypted IPs to database when x-forwarded-for header is set in request
 #  - force exempt=true to disable http->https redirect to enable working internal LB health checks and Pod readiness probes on GKE
 dos2unix ./server/src/server.ts
-patch --no-backup-if-mismatch ./server/src/server.ts <  ../server/src/server.ts.patch
+patch --no-backup-if-mismatch ./server/src/server.ts <  ../patches/server/src/server.ts.patch
 
 # patch 4: hide social media opt in settings for conversation setup and set opt-in defaults as false
 dos2unix ./server/src/utils/constants.ts
-patch ./server/src/utils/constants.ts < ../server/src/utils/constants.ts.patch
+patch ./server/src/utils/constants.ts < ../patches/server/src/utils/constants.ts.patch
 dos2unix ./client-admin/src/components/conversation-admin/conversation-config.js
-patch ./client-admin/src/components/conversation-admin/conversation-config.js < ../client-admin/src/components/conversation-admin/conversation-config.js.patch
+patch ./client-admin/src/components/conversation-admin/conversation-config.js < ../patches/client-admin/src/components/conversation-admin/conversation-config.js.patch
 
 # patch 5:
 # - hide facebook login/user creation on admin signin page
 # - add dev env warning before login form
 dos2unix ./client-admin/src/components/landers/signin.js
-patch  ./client-admin/src/components/landers/signin.js < ../client-admin/src/components/landers/signin.js.patch
+patch  ./client-admin/src/components/landers/signin.js < ../patches/client-admin/src/components/landers/signin.js.patch
 
 # patch 6: hide TOS link and replace privacy policy link on admin page footer
 dos2unix ./client-admin/src/components/landers/lander-footer.js
-patch ./client-admin/src/components/landers/lander-footer.js < ../client-admin/src/components/landers/lander-footer.js.patch
+patch ./client-admin/src/components/landers/lander-footer.js < ../patches/client-admin/src/components/landers/lander-footer.js.patch
 
 # patch 7: hide footer (logo with pol.is link and other links to privacy policy & terms pages)
 dos2unix ./client-participation/js/templates/participation.handlebars 
-patch ./client-participation/js/templates/participation.handlebars < ../client-participation/js/templates/participation.handlebars.patch
+patch ./client-participation/js/templates/participation.handlebars < ../patches/client-participation/js/templates/participation.handlebars.patch
 
 # patch 8: add finnish and swedish translations
-cp -r ../client-participation/js/strings/* ./client-participation/js/strings/
+cp -r ../translations/client-participation/js/strings/* ./client-participation/js/strings/
 dos2unix ./client-participation/js/strings.js
-patch ./client-participation/js/strings.js < ../client-participation/js/strings.js.patch
+patch ./client-participation/js/strings.js < ../patches/client-participation/js/strings.js.patch
 
 # patch 9: redirect to /signin instead of /home after sign out
 dos2unix ./client-admin/src/components/landers/signout.js
-patch  ./client-admin/src/components/landers/signout.js < ../client-admin/src/components/landers/signout.js.patch
+patch  ./client-admin/src/components/landers/signout.js < ../patches/client-admin/src/components/landers/signout.js.patch

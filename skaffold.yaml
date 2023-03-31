@@ -27,3 +27,4 @@ deploy:
     - manifests/local/polis-file-server.yaml
     - manifests/local/polis-math.yaml
     - manifests/local/polis-server.yaml
+    - manifests/local/postgres.yaml
