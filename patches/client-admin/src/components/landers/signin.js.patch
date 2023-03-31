@@ -1,4 +1,4 @@
---- ./client-admin/src/components/landers/signin.js	2023-03-31 14:41:24.415143000 +0300
+--- ./client-admin/src/components/landers/signin.js	2023-03-31 15:20:01.655798000 +0300
 +++ ../patches/client-admin/src/components/landers/signin.js	2023-03-06 15:42:35.060852000 +0200
 @@ -165,6 +165,21 @@
      )

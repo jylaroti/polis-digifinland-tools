@@ -1,5 +1,5 @@
---- ./client-participation/js/templates/participation.handlebars	2023-03-31 09:27:29.671220000 +0300
-+++ ../patches/client-participation/js/templates/participation.handlebars	2023-03-31 13:59:48.900755000 +0300
+--- ./client-participation/js/templates/participation.handlebars	2023-03-31 15:20:01.655798000 +0300
++++ ../patches/client-participation/js/templates/participation.handlebars	2023-03-31 14:57:18.191923000 +0300
 @@ -435,7 +435,8 @@
  
  

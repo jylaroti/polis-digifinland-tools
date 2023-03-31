@@ -1,5 +1,5 @@
---- ./client-participation/js/strings.js	2023-03-31 09:27:29.651220000 +0300
-+++ ../patches/client-participation/js/strings.js	2023-03-31 13:44:56.732058000 +0300
+--- ./client-participation/js/strings.js	2023-03-31 15:20:01.655798000 +0300
++++ ../patches/client-participation/js/strings.js	2023-03-31 14:57:09.327354000 +0300
 @@ -58,6 +58,12 @@
    // Ukrainian
    uk: require("./strings/uk.js"),

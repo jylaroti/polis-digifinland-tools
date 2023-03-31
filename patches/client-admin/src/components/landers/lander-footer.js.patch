@@ -1,5 +1,5 @@
---- ./client-admin/src/components/landers/lander-footer.js	2023-03-31 09:27:29.631220000 +0300
-+++ ../patches/client-admin/src/components/landers/lander-footer.js	2023-03-06 11:24:46.612121000 +0200
+--- ./client-admin/src/components/landers/lander-footer.js	2023-03-31 15:20:01.655798000 +0300
++++ ../patches/client-admin/src/components/landers/lander-footer.js	2023-03-31 14:56:15.464687000 +0300
 @@ -18,8 +18,14 @@
            {emoji('🇺🇸')}, with contributions from around the {emoji('🌍🌏🌎')}
          </Box>

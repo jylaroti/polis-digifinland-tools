@@ -21,6 +21,7 @@ diff -u ./server/src/server.ts ../patches/server/src/server.ts > ../patches/serv
 # patch 4: hide social media opt in settings for conversation setup and set opt-in defaults as false
 dos2unix -q ./server/src/utils/constants.ts
 diff -u ./server/src/utils/constants.ts ../patches/server/src/utils/constants.ts > ../patches/server/src/utils/constants.ts.patch
+dos2unix -q ./client-admin/src/components/conversation-admin/conversation-config.js
 diff -u ./client-admin/src/components/conversation-admin/conversation-config.js ../patches/client-admin/src/components/conversation-admin/conversation-config.js > ../patches/client-admin/src/components/conversation-admin/conversation-config.js.patch
 
 # patch 5:
@@ -30,14 +31,18 @@ dos2unix -q ./client-admin/src/components/landers/signin.js
 diff -u ./client-admin/src/components/landers/signin.js ../patches/client-admin/src/components/landers/signin.js > ../patches/client-admin/src/components/landers/signin.js.patch
 
 # patch 6: hide TOS link and replace privacy policy link on admin page footer
+dos2unix -q ./client-admin/src/components/landers/lander-footer.js
 diff -u ./client-admin/src/components/landers/lander-footer.js ../patches/client-admin/src/components/landers/lander-footer.js > ../patches/client-admin/src/components/landers/lander-footer.js.patch
 
 # patch 7: hide footer (logo with pol.is link and other links to privacy policy & terms pages)
+dos2unix -q ./client-participation/js/templates/participation.handlebars
 diff -u ./client-participation/js/templates/participation.handlebars ../patches/client-participation/js/templates/participation.handlebars > ../patches/client-participation/js/templates/participation.handlebars.patch
 
 # patch 8: add finnish and swedish translations
+dos2unix -q ./client-participation/js/strings.js
 diff -u ./client-participation/js/strings.js ../patches/client-participation/js/strings.js > ../patches/client-participation/js/strings.js.patch
 
 # patch 9: redirect to /signin instead of /home after sign out
+dos2unix -q ./client-admin/src/components/landers/signout.js
 diff -u ./client-admin/src/components/landers/signout.js ../patches/client-admin/src/components/landers/signout.js > ../patches/client-admin/src/components/landers/signout.js.patch
 
