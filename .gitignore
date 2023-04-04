@@ -5,3 +5,5 @@ embed-test-site/*
 digifinland-dev.env
 docs
 docs/*
+.env
+
