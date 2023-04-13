@@ -1,5 +1,14 @@
---- ./client-participation/js/templates/participation.handlebars	2023-03-31 15:20:01.655798000 +0300
-+++ ../patches/client-participation/js/templates/participation.handlebars	2023-03-31 14:57:18.191923000 +0300
+--- ./client-participation/js/templates/participation.handlebars	2023-04-12 10:45:38.163588000 +0300
++++ ../patches/client-participation/js/templates/participation.handlebars	2023-04-13 10:25:22.256440000 +0300
+@@ -187,7 +187,7 @@
+          position: relative;
+          top: -5px;
+          left: 6px;
+-        ">closed</span>
++        ">Keskustelu on suljettu</span>
+       {{/unless}}
+       </h2>
+     {{/ifDefined}}
 @@ -435,7 +435,8 @@
  
  
