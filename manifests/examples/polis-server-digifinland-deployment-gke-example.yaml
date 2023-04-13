@@ -32,7 +32,7 @@ data:
   # These ports could actually be different in development or if you are hosting clint-admin,
   # client-participation, and file-server on different servers or containers.
   STATIC_FILES_ADMIN_PORT: "80"
-  STATIC_FILES_CLIENT_PORT: "80"
+  STATIC_FILES_PARTICIPATION_PORT: "80"
 
   ###### EMAIL ADDRESSES ######
   ADMIN_EMAIL_DATA_EXPORT_TEST:
