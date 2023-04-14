@@ -1,0 +1,12 @@
+DELETE FROM math_bidtopid WHERE zid=2;
+DELETE FROM math_main WHERE zid=2;
+DELETE FROM math_profile WHERE zid=2;
+DELETE FROM math_ptptstats WHERE zid=2;
+DELETE FROM math_ticks WHERE zid=2;
+DELETE FROM participants_extended WHERE zid=2;
+DELETE FROM reports WHERE zid=2;
+DELETE FROM comment_translations WHERE zid=2;
+DELETE FROM comments WHERE zid=2;
+DELETE FROM zinvites WHERE zid=2;
+DELETE FROM participants WHERE zid=2;
+DELETE FROM conversations WHERE zid=2;
