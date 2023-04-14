@@ -1,5 +1,7 @@
 # Polis DigiFinland Tools
 
+Polis is a real-time system for gathering, analyzing and understanding what large groups of people think in their own words, enabled by advanced statistics and machine learning.
+
 Set of deploy scripts, settings files, custom patches, translations and utilities for running Polis experiment deployments for DigiFinland.
 
 ## Initialization
