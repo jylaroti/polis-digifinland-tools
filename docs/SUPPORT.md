@@ -1,4 +1,4 @@
 # Support
 
-#### To get help with this project, please write to us at [sposti@df.fi](mailto:sposti@df.fi).
+#### To get help with this project, please write to us at [polis@digifinland.fi](mailto:polis@digifinland.fi).
 
