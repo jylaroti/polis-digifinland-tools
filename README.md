@@ -1,5 +1,6 @@
 # Polis DigiFinland Tools
 
+## Description
 Set of deploy scripts, settings files, custom patches, translations and utilities for running Polis experiment deployments for DigiFinland.
 
 ## Initialization
@@ -22,7 +23,7 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
     127.0.0.1 	polis.local
     ```
 
-4. Copy `digifinland-example.env` to a new file called `digifinland-dev.env` and edit variables to match your environment.
+4. Copy `digifinland-example.env` to a new file called `.env` and edit variables to match your environment.
 
 ## Quickstart to get local environment up with Docker Compose
 
@@ -34,7 +35,7 @@ Set of deploy scripts, settings files, custom patches, translations and utilitie
 
 3. Build and start containers with Docker Compose:
     ```
-    ./scripts/docker-compose_build-and-deploy.sh dev
+    docker-compose up -d --force-recreate --build --remove-orphans
     ```
 4. Browse to https://polis.local
 
@@ -113,3 +114,14 @@ Example:
 ```
 ./scripts/docker_images-build-and-push.sh example.com/project/repository tag-name
 ```
+
+### Licensing
+See [LICENSE](./LICENSE.md)
+
+### Contributing changes
+* See [CONTRIBUTING.md](docs/CONTRIBUTING.md)
+
+### Additional documents in /docs
+* [CODE_OF_CONDUCT](docs/CODE_OF_CONDUCT.md)
+* [SECURITY](docs/SECURITY.md)
+* [SUPPORT](docs/SUPPORT.md)

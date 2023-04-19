@@ -1,3 +1,22 @@
+DELETE FROM conversation_translations WHERE zid=2;
+DELETE FROM crowd_mod WHERE zid=2;
+DELETE FROM math_cache WHERE zid=2;
+DELETE FROM math_exportstatus WHERE zid=2;
+DELETE FROM page_ids WHERE zid=2;
+DELETE FROM participant_locations WHERE zid=2;
+DELETE FROM event_ptpt_no_more_comments WHERE zid=2;
+DELETE FROM notification_tasks WHERE zid=2;
+DELETE FROM participant_metadata_answers WHERE zid=2;
+DELETE FROM participant_metadata_choices WHERE zid=2;
+DELETE FROM participant_metadata_questions WHERE zid=2;
+DELETE FROM permanentcookiezidjoins WHERE zid=2;
+DELETE FROM report_comment_selections WHERE zid=2;
+DELETE FROM stars WHERE zid=2;
+DELETE FROM suzinvites WHERE zid=2;
+DELETE FROM trashes WHERE zid=2;
+DELETE FROM votes WHERE zid=2;
+DELETE FROM votes_latest_unique WHERE zid=2;
+DELETE FROM upvotes WHERE zid=2;
 DELETE FROM math_bidtopid WHERE zid=2;
 DELETE FROM math_main WHERE zid=2;
 DELETE FROM math_profile WHERE zid=2;
@@ -10,3 +29,4 @@ DELETE FROM comments WHERE zid=2;
 DELETE FROM zinvites WHERE zid=2;
 DELETE FROM participants WHERE zid=2;
 DELETE FROM conversations WHERE zid=2;
+
